@@ -1,0 +1,76 @@
+{
+    "character": "Test",
+    "pages": [
+        {
+            "page": "Main",
+            "buttons": [
+                {
+                    "button": "1",
+                    "grid_x": 0,
+                    "grid_y": 0,
+                    "width": 1,
+                    "height": 1
+                },
+                {
+                    "button": "2",
+                    "grid_x": 8,
+                    "grid_y": 18,
+                    "width": 2,
+                    "height": 2
+                },
+                {
+                    "button": "1",
+                    "grid_x": 2,
+                    "grid_y": 3,
+                    "width": 1,
+                    "height": 1
+                },
+                {
+                    "button": "2",
+                    "grid_x": 5,
+                    "grid_y": 14,
+                    "width": 2,
+                    "height": 2
+                },
+                {
+                    "button": "test",
+                    "grid_x": 4,
+                    "grid_y": 8,
+                    "width": 2,
+                    "height": 1
+                }
+            ]
+        },
+        {
+            "page": "face",
+            "buttons": [
+                {
+                    "button": "head",
+                    "grid_x": 3,
+                    "grid_y": 2,
+                    "width": 4,
+                    "height": 4
+                },
+                {
+                    "button": "head",
+                    "grid_x": 3,
+                    "grid_y": 10,
+                    "width": 4,
+                    "height": 4
+                }
+            ]
+        },
+        {
+            "page": "prop",
+            "buttons": [
+                {
+                    "button": "gun",
+                    "grid_x": 4,
+                    "grid_y": 7,
+                    "width": 2,
+                    "height": 6
+                }
+            ]
+        }
+    ]
+}
