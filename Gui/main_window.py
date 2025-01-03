@@ -28,6 +28,9 @@ class CharacterPicker(QtWidgets.QMainWindow):
         except Exception as e:
             print(f"Error setting up icons: {e}")
 
+        # Initialize ContextMenu
+        self.context_menu = context.ContextMenu(self)
+
         # Initialize menu bar
         self.menu_bar = menubar.MenuBar(self)
         self.setMenuBar(self.menu_bar)
@@ -42,7 +45,7 @@ class CharacterPicker(QtWidgets.QMainWindow):
         outer_layout.setSpacing(10)
 
         # Initialize Tab Manager
-        self.tab_manager = tab.TabManager(self.icon_dir, self)
+        self.tab_manager = tab.TabManager(self.icon_dir, self, self.context_menu)
         outer_layout.addWidget(self.tab_manager)
 
         self._edit_mode = True  # Start in Edit Mode
@@ -91,9 +94,6 @@ class CharacterPicker(QtWidgets.QMainWindow):
 
     def update_mode_state(self):
         """Update UI components based on the current mode."""
-        # Update menu bar action text
-        self.update_mode_text()
-
         # Show/Hide the EditBox
         self.edit_box.setVisible(self._edit_mode)
 
@@ -115,26 +115,36 @@ class CharacterPicker(QtWidgets.QMainWindow):
             else:
                 print(f"Action {action_name} is already deleted or does not exist.")
 
+        # Update the text of the current_mode_action safely
+        current_mode_action = self.menu_bar.current_mode_action
+        if current_mode_action:
+            try:
+                new_text = "Switch to Animate Mode" if self._edit_mode else "Switch to Edit Mode"
+                current_mode_action.setText(new_text)
+                print(f"current_mode_action text set to '{new_text}'.")
+            except RuntimeError as e:
+                print(f"Error updating current_mode_action: {e}")
+        else:
+            print("current_mode_action does not exist.")
+
+        # Update toolbox_visibility_action's checked state to match self._edit_mode
+        toolbox_visibility_action = self.menu_bar.toolbox_visibility_action
+        if toolbox_visibility_action:
+            try:
+                # Block signals to prevent recursive updates
+                toolbox_visibility_action.setChecked(self._edit_mode)
+                print(f"toolbox_visibility_action checked state set to {self._edit_mode}.")
+            except RuntimeError as e:
+                print(f"Error updating toolbox_visibility_action: {e}")
+        else:
+            print("toolbox_visibility_action does not exist.")
+
         # # Trigger grid updates
         # for tab_widget in self.tab_manager.children():
         #     if isinstance(tab_widget, QtWidgets.QWidget) and hasattr(tab_widget, "stacked_widget"):
         #         for page in tab_widget.stacked_widget.children():
         #             if isinstance(page, grid.GridWidget):
         #                 page.update()
-
-    def update_mode_text(self):
-        """Update the text of the current_mode_action based on the mode."""
-        if not self.menu_bar or not self.menu_bar.current_mode_action:
-            print("Warning: MenuBar or current_mode_action is None.")
-            return
-
-        try:
-            if self.edit_mode:
-                self.menu_bar.current_mode_action.setText("Switch to Animate")
-            else:
-                self.menu_bar.current_mode_action.setText("Switch to Edit Mode")
-        except RuntimeError as e:
-            print(f"Error updating current_mode_action: {e}")
 
     def connect_signals(self):
         """Connect signals between components."""

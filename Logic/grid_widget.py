@@ -225,13 +225,17 @@ class GridWidget(QtWidgets.QWidget):
 
     def set_bg_scale(self, slider_value):
         """
-        slider_value in [0..100], 0 => 0.5, 50 => 1.0, 100 => 2.0
-        We'll do a piecewise approach so that 0..50 => [0.5..1.0], 50..100 => [1.0..2.0].
+        Adjust the scale factor for the background image.
+        slider_value in [0..100], 0 => min_scale, 50 => default_scale, 100 => max_scale.
         """
+        min_scale = 0.1
+        default_scale = 1.0
+        max_scale = 10.0
+
         if slider_value <= 50:
-            scale = 0.5 + 0.01 * slider_value
+            scale = min_scale + (default_scale - min_scale) * (slider_value / 50.0)
         else:
-            scale = 1.0 + 0.02 * (slider_value - 50)
+            scale = default_scale + (max_scale - default_scale) * ((slider_value - 50) / 50.0)
 
         self.bg_scale_factor = scale
         self.update()
@@ -241,6 +245,14 @@ class GridWidget(QtWidgets.QWidget):
             self._dragging = True
             self._drag_start = event.pos()
             event.accept()
+
+        elif event.button() == QtCore.Qt.RightButton:
+            # Check if a picker button is under the cursor
+            child = self.childAt(event.pos())
+            selected_button = child if isinstance(child, picker.PickerButton) else None
+
+            # Show the context menu at the global position of the click
+            self.context_menu.show_context_menu(event.globalPos(), selected_button)
         else:
             super().mousePressEvent(event)
 

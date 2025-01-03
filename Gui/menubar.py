@@ -68,23 +68,22 @@ class MenuBar(QtWidgets.QMenuBar):
         self.add_page_action = QtWidgets.QAction("Add Page", edit_menu)
         edit_menu.addAction(self.add_page_action)
 
-        self.add_button_action = QtWidgets.QAction("Add Button", edit_menu)
-        edit_menu.addAction(self.add_button_action)
-
-        edit_menu.addSeparator()
-
-        self.remove_page_action = QtWidgets.QAction("Remove Page", edit_menu)
-        edit_menu.addAction(self.remove_page_action)
-
         self.rename_page_action = QtWidgets.QAction("Rename Page", edit_menu)
         edit_menu.addAction(self.rename_page_action)
+
+        self.remove_page_action = QtWidgets.QAction("Delete Page", edit_menu)
+        edit_menu.addAction(self.remove_page_action)
+
+        edit_menu.addSeparator()
+        self.add_button_action = QtWidgets.QAction("Add Button", edit_menu)
+        edit_menu.addAction(self.add_button_action)
 
         self.delete_button_action = QtWidgets.QAction("Delete Button", edit_menu)
         edit_menu.addAction(self.delete_button_action)
 
         edit_menu.addSeparator()
 
-        self.current_mode_action = QtWidgets.QAction("Switch to Animate", edit_menu)
+        self.current_mode_action = QtWidgets.QAction("Switch to Animate Mode", edit_menu)
         edit_menu.addAction(self.current_mode_action)
 
         # View menu

@@ -22,20 +22,13 @@ class TabManager(QtWidgets.QTabWidget):
     # Define a signal to handle page change events
     currentPageChanged = QtCore.Signal(int)  # (the new page index)
 
-    def __init__(self, icon_dir, parent=None):
+    def __init__(self, icon_dir, parent=None, context_menu=None):
         super(TabManager, self).__init__(parent)
         self.icon_dir = icon_dir
+        self.context_menu = context_menu
         self.setTabBar(custom.FixedSizeTabBar())
         self.init_tabs()
         self.currentChanged.connect(self.update_page_button_styles)
-
-        # # Apply stylesheet to customize the main border and make QTabBar::tab transparent
-        # self.setStyleSheet("""
-        #             QTabWidget::pane {
-        #                 border: 1px solid #000000;  /* Desired border color */
-        #                 background: transparent;    /* Make pane background transparent */
-        #             }
-        #         """)
 
     def init_tabs(self):
         self.add_character_tab("Character 1")
@@ -268,6 +261,7 @@ class TabManager(QtWidgets.QTabWidget):
 
         # Create a new page (GridWidget)
         new_page = grid.GridWidget(rows=grid.GridWidget.DEFAULT_ROWS, cols=grid.GridWidget.DEFAULT_COLS)
+        new_page.context_menu = self.context_menu
 
         # Assign an attribute page_name to this page so the EditBox can see it
         new_page.page_name = page_name
