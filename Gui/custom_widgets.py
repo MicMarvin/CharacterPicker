@@ -107,22 +107,22 @@ class FixedSizeTabBar(QtWidgets.QTabBar):
 
 
 class CollapsibleBox(QtWidgets.QWidget):
-    def __init__(self, title="", icon_path=None, parent=None):
-        super(CollapsibleBox, self).__init__(parent)
+    toggled = QtCore.Signal(bool)  # Signal emitted when the box is toggled (open/close)
 
+    def __init__(self, title="", parent=None):
+        super(CollapsibleBox, self).__init__(parent)
+        self.is_open = False
+        self.init_ui(title)
+
+    def init_ui(self, title):
         # Create toggle button
         self.toggle_button = QtWidgets.QToolButton(text=title)
         self.toggle_button.setStyleSheet("QToolButton { border: none; }")
         self.toggle_button.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
         self.toggle_button.setArrowType(QtCore.Qt.RightArrow)
         self.toggle_button.setCheckable(True)
-        self.toggle_button.setChecked(False)
-
-        if icon_path and os.path.exists(icon_path):
-            icon = QtGui.QIcon(icon_path)
-            self.toggle_button.setIcon(icon)
-
-        self.toggle_button.clicked.connect(self.toggle_content)
+        self.toggle_button.setChecked(self.is_open)
+        self.toggle_button.clicked.connect(self.on_toggle)
 
         # Content container with a border
         self.content_widget = QtWidgets.QFrame()
@@ -140,17 +140,6 @@ class CollapsibleBox(QtWidgets.QWidget):
         main_layout.addWidget(self.toggle_button)
         main_layout.addWidget(self.content_widget)
 
-    def toggle_content(self):
-        """Toggle the visibility of the content."""
-        is_checked = self.toggle_button.isChecked()
-        self.content_widget.setVisible(is_checked)
-
-        # Update the arrow type for the toggle button
-        if is_checked:
-            self.toggle_button.setArrowType(QtCore.Qt.DownArrow)
-        else:
-            self.toggle_button.setArrowType(QtCore.Qt.RightArrow)
-
     def setContentLayout(self, layout):
         """Sets the content layout for the collapsible box."""
         # Clear existing layout
@@ -162,3 +151,9 @@ class CollapsibleBox(QtWidgets.QWidget):
 
         self.content_layout.addLayout(layout)
 
+    def on_toggle(self):
+        self.is_open = not self.is_open
+        self.toggle_button.setArrowType(QtCore.Qt.DownArrow if self.is_open else QtCore.Qt.RightArrow)
+        self.content_widget.setVisible(self.is_open)
+        self.toggled.emit(self.is_open)
+        self.content_widget.setVisible(self.is_open)

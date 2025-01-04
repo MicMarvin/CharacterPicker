@@ -60,67 +60,76 @@ class GridWidget(QtWidgets.QWidget):
         If raster, do the same with pixmap.scaled(...).
         Then store it in self.bg_pixmap.
         """
-
         if not image_path:
             self.bg_pixmap = None
             self.update()
             return
 
-        if image_path.lower().endswith(".svg"):
-            svg_renderer = QtSvg.QSvgRenderer(image_path)
-            if not svg_renderer.isValid():
-                print(f"Failed to load SVG: {image_path}")
-                self.bg_pixmap = None
+        def scale_and_set_image():
+            if self.width() > 0 and self.height() > 0:
+                if image_path.lower().endswith(".svg"):
+                    svg_renderer = QtSvg.QSvgRenderer(image_path)
+                    if not svg_renderer.isValid():
+                        print(f"Failed to load SVG: {image_path}")
+                        self.bg_pixmap = None
+                        self.update()
+                        return
+
+                    # 1) Get the intrinsic default size from the SVG
+                    default_size = svg_renderer.defaultSize()
+                    w = default_size.width()
+                    h = default_size.height()
+
+                    # If the SVG doesn't report a default size, use a fallback
+                    if w < 1 or h < 1:
+                        w, h = 512, 512
+
+                    # 2) Compare with the widget's size to find the best ratio
+                    widget_w = self.width()
+                    widget_h = self.height()
+                    ratio = min(widget_w / w, widget_h / h)
+
+                    # 3) The target size to keep aspect ratio
+                    target_w = max(int(w * ratio), 1)
+                    target_h = max(int(h * ratio), 1)
+
+                    # Create a QImage of that target size
+                    temp_image = QtGui.QImage(target_w, target_h, QtGui.QImage.Format_ARGB32)
+                    temp_image.fill(QtCore.Qt.transparent)
+
+                    # Render the SVG at that size
+                    svg_painter = QtGui.QPainter(temp_image)
+                    svg_renderer.render(svg_painter)
+                    svg_painter.end()
+
+                    # Convert to QPixmap
+                    self.bg_pixmap = QtGui.QPixmap.fromImage(temp_image)
+
+                else:
+                    # Raster image
+                    pixmap = QtGui.QPixmap(image_path)
+                    if not pixmap.isNull():
+                        self.bg_pixmap = pixmap.scaled(
+                            self.size(),
+                            QtCore.Qt.KeepAspectRatio,
+                            QtCore.Qt.SmoothTransformation
+                        )
+                    else:
+                        print(f"Failed to load raster image: {image_path}")
+                        self.bg_pixmap = None
+
+                # Reset BG offsets + scale
+                self.bg_offset_gx = 0.0
+                self.bg_offset_gy = 0.0
+                self.bg_scale_factor = 1.0
+
                 self.update()
-                return
-
-            # 1) Get the intrinsic default size from the SVG
-            default_size = svg_renderer.defaultSize()
-            w = default_size.width()
-            h = default_size.height()
-
-            # If the SVG doesn't report a default size, use a fallback
-            if w < 1 or h < 1:
-                w, h = 512, 512
-
-            # 2) Compare with the widget's size to find the best ratio
-            widget_w = self.width() if self.width() > 0 else 512
-            widget_h = self.height() if self.height() > 0 else 512
-            ratio = min(widget_w / w, widget_h / h)
-
-            # 3) The target size to keep aspect ratio
-            target_w = max(int(w * ratio), 1)
-            target_h = max(int(h * ratio), 1)
-            # Create a QImage of that target size
-            temp_image = QtGui.QImage(target_w, target_h, QtGui.QImage.Format_ARGB32)
-            temp_image.fill(QtCore.Qt.transparent)
-
-            # Render the SVG at that size
-            svg_painter = QtGui.QPainter(temp_image)
-            svg_renderer.render(svg_painter)
-            svg_painter.end()
-
-            # Convert to QPixmap
-            self.bg_pixmap = QtGui.QPixmap.fromImage(temp_image)
-
-        else:
-            # Raster image
-            pixmap = QtGui.QPixmap(image_path)
-            if not pixmap.isNull():
-                self.bg_pixmap = pixmap.scaled(
-                    self.size(),
-                    QtCore.Qt.KeepAspectRatio,
-                    QtCore.Qt.SmoothTransformation
-                )
             else:
-                self.bg_pixmap = None
+                # Widget size not stable; retry scaling
+                print(f"Widget size not stable for {image_path}, retrying...")
+                QtCore.QTimer.singleShot(0, scale_and_set_image)
 
-        # Reset BG offsets + scale
-        self.bg_offset_gx = 0.0
-        self.bg_offset_gy = 0.0
-        self.bg_scale_factor = 1.0
-
-        self.update()
+        scale_and_set_image()
 
     def paintEvent(self, event):
         painter = QtGui.QPainter(self)
@@ -252,7 +261,8 @@ class GridWidget(QtWidgets.QWidget):
             selected_button = child if isinstance(child, picker.PickerButton) else None
 
             # Show the context menu at the global position of the click
-            self.context_menu.show_context_menu(event.globalPos(), selected_button)
+            self.context_menu.set_context_type('grid')
+            self.context_menu.exec_(event.globalPos(), selected_button)
         else:
             super().mousePressEvent(event)
 

@@ -12,24 +12,46 @@ class EditBox(QtWidgets.QGroupBox):
     picker_updated = QtCore.Signal(dict)  # {'label', 'grid_pos', 'size_in_cells'}
     add_button_signal = QtCore.Signal()  # No additional data
 
-    def __init__(self, icon_dir, parent=None, tab_manager=None):
-        super(EditBox, self).__init__("ToolBox", parent)
+    def __init__(self, icon_dir, character_picker=None, tab_manager=None, context_menu=None):
+        super(EditBox, self).__init__("ToolBox", character_picker)
         self.icon_dir = icon_dir
+        self.character_picker = character_picker  # Store reference
         self.tab_manager = tab_manager  # Store a reference to the tab_manager
+        self.context_menu = context_menu  # Pass the shared context menu
         self.init_ui()
 
     def init_ui(self):
         layout = QtWidgets.QVBoxLayout(self)
         layout.setSpacing(10)
 
-        # 1. Character Settings Section (new CollapsibleBox)
-        self.add_character_settings(layout)
+        # Add sections
+        self.character_settings = self.add_character_settings(layout)
+        self.page_settings = self.add_page_settings(layout)
+        self.picker_button_controls = self.add_picker_button_controls(layout)
 
-        # 2. Page Settings Section
-        self.add_page_settings(layout)
+        # Connect toggled signals
+        self.character_settings.toggled.connect(self.handle_section_toggle)
+        self.page_settings.toggled.connect(self.handle_section_toggle)
+        self.picker_button_controls.toggled.connect(self.handle_section_toggle)
 
-        # 3. Picker Button Section
-        self.add_picker_button_controls(layout)
+        # Ensure only one section starts open
+        self.character_settings.toggle_button.setChecked(True)
+        self.character_settings.on_toggle()
+
+    def handle_section_toggle(self, is_open):
+        """Ensure only one section is open at a time."""
+        if not is_open:
+            return  # No need to handle closing a section
+
+        sender = self.sender()  # Get the section that emitted the signal
+
+        # Close other sections
+        for section in [self.character_settings, self.page_settings, self.picker_button_controls]:
+            if section != sender and section.is_open:
+                section.toggle_button.blockSignals(True)  # Temporarily block signals
+                section.toggle_button.setChecked(False)
+                section.on_toggle()  # Close the section
+                section.toggle_button.blockSignals(False)
 
     def set_character_name_field(self, name):
         """Sets the character_name_input field to the given name."""
@@ -114,6 +136,7 @@ class EditBox(QtWidgets.QGroupBox):
 
         # Set the CollapsibleBox content
         char_settings_box.setContentLayout(char_settings_layout)
+        return char_settings_box
 
     def update_character_name(self):
         """User finished editing the character_name_input."""
@@ -126,7 +149,7 @@ class EditBox(QtWidgets.QGroupBox):
             self.tab_manager.setTabText(current_index, new_name)
 
     def set_character_pic(self):
-        """Set a new background image."""
+        """Set a new character picture."""
         image_path, _ = QtWidgets.QFileDialog.getOpenFileName(
             self, "Select Character Picture", "", "Image Files (*.png *.jpg *.jpeg *.bmp *.svg)"
         )
@@ -230,6 +253,7 @@ class EditBox(QtWidgets.QGroupBox):
 
         # 5) Finally, assign this vertical container as the content of the CollapsibleBox
         page_settings_box.setContentLayout(page_settings_container)
+        return page_settings_box
 
     def update_page_name(self):
         """User finished editing the page_name_input."""
@@ -259,16 +283,11 @@ class EditBox(QtWidgets.QGroupBox):
             if hasattr(current_page, "set_bg_scale"):
                 current_page.set_bg_scale(value)
 
-    def set_background_image(self):
-        """Set a new background image."""
-        image_path, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self, "Select Background Image", "", "Image Files (*.png *.jpg *.jpeg *.bmp *.svg)"
-        )
-        if image_path:
-            self.bg_label.setText(f"{os.path.basename(image_path)}")
-            current_tab = self.tab_manager.currentWidget()
-            if current_tab:
-                current_tab.stacked_widget.currentWidget().set_background_image(image_path)
+    def set_background_image(self, image_path=None):
+        """
+        Delegate setting the background to CharacterPicker.
+        """
+        self.tab_manager.set_current_page_background(image_path)
 
     def nudge_bg_left(self):
         current_tab = self.tab_manager.currentWidget()
@@ -339,6 +358,7 @@ class EditBox(QtWidgets.QGroupBox):
         picker_layout.addRow(button_layout)
 
         picker_box.setContentLayout(picker_layout)
+        return picker_box
 
     def update_picker_button_name(self):
         """User finished editing the picker_label_input."""
@@ -404,3 +424,11 @@ class EditBox(QtWidgets.QGroupBox):
 
             self.picker_submit_button.setText("Update")
             self.picker_delete_button.setEnabled(True)
+
+    def mousePressEvent(self, event):
+        if event.button() == QtCore.Qt.RightButton:
+            # Show the context menu for the page button area
+            self.context_menu.set_context_type('tool_box')
+            self.context_menu.exec_(event.globalPos())
+        else:
+            super().mousePressEvent(event)

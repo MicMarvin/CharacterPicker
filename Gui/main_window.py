@@ -35,6 +35,22 @@ class CharacterPicker(QtWidgets.QMainWindow):
         self.menu_bar = menubar.MenuBar(self)
         self.setMenuBar(self.menu_bar)
 
+        # Initialize Tab Manager
+        if self.icon_dir:
+            print(f"Before TabManager: {getattr(self, 'tab_manager', None)}")
+            try:
+                self.tab_manager = tab.TabManager(self.icon_dir, character_picker=self, context_menu=self.context_menu)
+                print(f"TabManager successfully initialized: {self.tab_manager}")
+            except Exception as e:
+                print(f"Error initializing TabManager: {e}")
+                raise
+            print(f"After TabManager: {self.tab_manager}")
+        else:
+            QtWidgets.QMessageBox.warning(
+                self, "Initialization Error", "Icon directory is not properly set. Cannot proceed."
+            )
+            return
+
         # Initialize central widget
         central_widget = QtWidgets.QWidget()
         self.setCentralWidget(central_widget)
@@ -43,39 +59,25 @@ class CharacterPicker(QtWidgets.QMainWindow):
         outer_layout = QtWidgets.QVBoxLayout(central_widget)
         outer_layout.setContentsMargins(10, 0, 10, 10)
         outer_layout.setSpacing(10)
-
-        # Initialize Tab Manager
-        self.tab_manager = tab.TabManager(self.icon_dir, self, self.context_menu)
         outer_layout.addWidget(self.tab_manager)
 
         self._edit_mode = True  # Start in Edit Mode
 
         # Initialize Edit Box
-        self.edit_box = edit.EditBox(self.icon_dir, parent=self, tab_manager=self.tab_manager)
+        self.edit_box = edit.EditBox(self.icon_dir, character_picker=self, tab_manager=self.tab_manager, context_menu=self.context_menu)
         self.edit_box.setVisible(self._edit_mode)
         outer_layout.addWidget(self.edit_box)
         self.menu_bar.toolbox_visibility_action.setChecked(self._edit_mode)
 
-        # Initialize Context Menu
-        self.context_menu = context.ContextMenu(self)
-
-        # Connect signals
-        self.connect_signals()
-
         # Initialize selected button
         self.selected_picker_button = None
-
-        # Create a default 1x1 button using the unified create_picker_button
-        current_tab = self.tab_manager.currentWidget()
-        if hasattr(current_tab, "stacked_widget"):
-            main_page = current_tab.stacked_widget.widget(0)
-            if isinstance(main_page, grid.GridWidget):
-                # Optionally, you can add a default button here if needed
-                self.set_selected_picker_button(None)  # Ensure no button is selected initially
 
         # Manually force the UI to reflect the tab and page default name
         current_index = self.tab_manager.currentIndex()
         self.on_tab_changed(current_index)
+
+        # Connect signals
+        self.connect_signals()
 
     @property
     def edit_mode(self):
@@ -97,7 +99,7 @@ class CharacterPicker(QtWidgets.QMainWindow):
         # Show/Hide the EditBox
         self.edit_box.setVisible(self._edit_mode)
 
-        # Safely update menu actions
+        # Safely update menu actions in MenuBar
         actions = [
             ("add_page_action", self.menu_bar.add_page_action),
             ("add_button_action", self.menu_bar.add_button_action),
@@ -116,28 +118,39 @@ class CharacterPicker(QtWidgets.QMainWindow):
                 print(f"Action {action_name} is already deleted or does not exist.")
 
         # Update the text of the current_mode_action safely
+        current_mode_action_text = "Switch to Animate Mode" if self._edit_mode else "Switch to Edit Mode"
+
+        # Update MenuBar current_mode_action
         current_mode_action = self.menu_bar.current_mode_action
         if current_mode_action:
             try:
-                new_text = "Switch to Animate Mode" if self._edit_mode else "Switch to Edit Mode"
-                current_mode_action.setText(new_text)
-                print(f"current_mode_action text set to '{new_text}'.")
+                current_mode_action.setText(current_mode_action_text)
             except RuntimeError as e:
-                print(f"Error updating current_mode_action: {e}")
-        else:
-            print("current_mode_action does not exist.")
+                print(f"Error updating MenuBar current_mode_action: {e}")
 
-        # Update toolbox_visibility_action's checked state to match self._edit_mode
+        # Update ContextMenu actions and current_mode_action text
+        if self.context_menu:
+            try:
+                # Update the text of the current_mode_action in ContextMenu
+                self.context_menu.current_mode_action.setText(current_mode_action_text)
+
+                # Update enabled state of actions in ContextMenu
+                for action in [self.context_menu.add_button_action,
+                               self.context_menu.delete_button_action,
+                               self.context_menu.add_page_action,
+                               self.context_menu.remove_page_action]:
+                    if action:
+                        action.setEnabled(self._edit_mode)
+            except RuntimeError as e:
+                print(f"Error updating ContextMenu actions: {e}")
+
+        # Synchronize toolbox_visibility_action's checked state with _edit_mode
         toolbox_visibility_action = self.menu_bar.toolbox_visibility_action
         if toolbox_visibility_action:
             try:
-                # Block signals to prevent recursive updates
                 toolbox_visibility_action.setChecked(self._edit_mode)
-                print(f"toolbox_visibility_action checked state set to {self._edit_mode}.")
             except RuntimeError as e:
                 print(f"Error updating toolbox_visibility_action: {e}")
-        else:
-            print("toolbox_visibility_action does not exist.")
 
         # # Trigger grid updates
         # for tab_widget in self.tab_manager.children():
@@ -164,12 +177,27 @@ class CharacterPicker(QtWidgets.QMainWindow):
         self.menu_bar.add_character_action.triggered.connect(self.handle_add_character)
         self.menu_bar.save_character_action.triggered.connect(self.handle_save_character)
         self.menu_bar.load_character_action.triggered.connect(self.handle_load_character)
+        self.menu_bar.rename_character_action.triggered.connect(self.rename_current_character)
         self.menu_bar.add_page_action.triggered.connect(self.handle_add_page)
+        self.menu_bar.rename_page_action.triggered.connect(self.rename_current_page)
         self.menu_bar.remove_page_action.triggered.connect(self.remove_current_page)
         self.menu_bar.add_button_action.triggered.connect(self.tab_manager.add_button_to_current)
         self.menu_bar.close_tab_action.triggered.connect(self.remove_current_character)
         self.menu_bar.current_mode_action.triggered.connect(self.toggle_edit_mode)
         self.menu_bar.toolbox_visibility_action.toggled.connect(self.toggle_toolbox_visibility)
+
+        # Connect ContextMenu actions to appropriate methods
+        self.context_menu.change_background_action.triggered.connect(self.tab_manager.set_current_page_background)
+        self.context_menu.change_picture_action.triggered.connect(self.edit_box.set_character_pic)
+        self.context_menu.add_button_action.triggered.connect(self.tab_manager.add_picker_button)
+        self.context_menu.delete_button_action.triggered.connect(self.delete_selected_picker_button)
+        self.context_menu.add_tab_action.triggered.connect(self.handle_add_character)
+        self.context_menu.rename_tab_action.triggered.connect(self.rename_current_character)
+        self.context_menu.close_tab_action.triggered.connect(self.remove_current_character)
+        self.context_menu.add_page_action.triggered.connect(self.handle_add_page)
+        self.context_menu.rename_page_action.triggered.connect(self.rename_current_page)
+        self.context_menu.remove_page_action.triggered.connect(self.remove_current_page)
+        self.context_menu.current_mode_action.triggered.connect(self.toggle_edit_mode)
 
         # Connect other signals
         self.tab_manager.currentChanged.connect(self.on_tab_changed) # Tab change
@@ -190,24 +218,54 @@ class CharacterPicker(QtWidgets.QMainWindow):
     def handle_add_page(self, page_name=None):
         """
         Handle adding a new page to the current tab.
-        If no page_name is provided, prompt the user for one.
+        The first three pages are named 'Main', 'Face', and 'Prop' automatically.
+        Subsequent pages prompt the user for a name.
         """
-        if not page_name:
-            page_name, ok = QtWidgets.QInputDialog.getText(self, "Add Page", "Enter page name:")
-            # 1) If the user canceled (ok == False), just exit—no alerts.
-            if not ok:
-                return
-            # 2) If the user pressed OK but the name is empty/blank, show warning and exit.
-            if not page_name.strip():
-                QtWidgets.QMessageBox.warning(self, "Warning", "Page name cannot be empty.")
-                return
-
-        # If we get here, page_name is set, so proceed to add a page
+        # Check the current tab
         current_tab = self.tab_manager.currentWidget()
-        if current_tab:
-            self.tab_manager.add_page_to_current(page_name)
+        if not current_tab or not hasattr(current_tab, "stacked_widget"):
+            QtWidgets.QMessageBox.warning(self, "Warning", "No valid character tab found.")
+            return
+
+        # Determine the next page name based on the number of existing pages
+        page_count = current_tab.stacked_widget.count()
+        if page_count == 0:
+            page_name = "Body"
+        elif page_count == 1:
+            page_name = "Face"
+        elif page_count == 2:
+            page_name = "Prop"
         else:
-            QtWidgets.QMessageBox.warning(self, "Warning", "No current tab found.")
+            # Prompt for a name if no name is provided
+            if not page_name:
+                page_name, ok = QtWidgets.QInputDialog.getText(self, "Add Page", "Enter page name:")
+                if not ok:  # User canceled
+                    return
+                if not page_name.strip():  # Empty name provided
+                    QtWidgets.QMessageBox.warning(self, "Warning", "Page name cannot be empty.")
+                    return
+
+        # Add the page to the current tab
+        self.tab_manager.add_page_to_current(page_name)
+
+    def rename_current_character(self):
+        """Logic to rename the selected tab."""
+        current_index = self.tab_manager.currentIndex()  # Use TabManager's currentIndex
+        if current_index == self.tab_manager.count() - 1:  # Prevent renaming the "Add Character" tab
+            QtWidgets.QMessageBox.warning(self, "Warning", "Cannot rename the 'Add Character' tab.")
+            return
+
+        # Get the current tab name and prompt for a new name
+        current_tab_name = self.tab_manager.tabText(current_index)
+        new_tab_name, ok = QtWidgets.QInputDialog.getText(
+            self, "Rename Tab", f"Enter a new name for '{current_tab_name}':"
+        )
+
+        # Validate and apply the new name
+        if ok and new_tab_name.strip():
+            self.tab_manager.setTabText(current_index, new_tab_name.strip())
+        elif ok:  # If the user pressed OK but provided no input
+            QtWidgets.QMessageBox.warning(self, "Warning", "Tab name cannot be empty.")
 
     def remove_current_character(self):
         """Handle removing the current character."""
@@ -223,6 +281,39 @@ class CharacterPicker(QtWidgets.QMainWindow):
             self.tab_manager.setCurrentIndex(current_index - 1)
         else:
             self.tab_manager.setCurrentIndex(0)
+
+    def rename_current_page(self):
+        """Logic to rename the currently selected page."""
+        # Get the current tab
+        current_tab = self.tab_manager.currentWidget()
+        if not current_tab or not hasattr(current_tab, 'stacked_widget'):
+            QtWidgets.QMessageBox.warning(self, "Warning", "No valid character tab is selected.")
+            return
+
+        # Get the current page
+        stacked_widget = current_tab.stacked_widget
+        current_page = stacked_widget.currentWidget()
+        if not current_page or not hasattr(current_page, "page_name"):
+            QtWidgets.QMessageBox.warning(self, "Warning", "No valid page is selected.")
+            return
+
+        # Prompt the user for a new page name
+        current_page_name = getattr(current_page, "page_name", "")
+        new_page_name, ok = QtWidgets.QInputDialog.getText(
+            self, "Rename Page", f"Enter a new name for '{current_page_name}':"
+        )
+
+        # Validate and apply the new page name
+        if ok and new_page_name.strip():
+            current_page.page_name = new_page_name.strip()
+
+            # Update the corresponding button in the page_button_layout
+            for page_button, page_obj in current_tab.page_buttons.items():
+                if page_obj == current_page:
+                    page_button.setText(new_page_name.strip())
+                    break
+        elif ok:  # If the user pressed OK but provided no input
+            QtWidgets.QMessageBox.warning(self, "Warning", "Page name cannot be empty.")
 
     def remove_current_page(self):
         """Handle removing the current page from the current tab's QStackedWidget
@@ -305,6 +396,10 @@ class CharacterPicker(QtWidgets.QMainWindow):
             # Select: populate fields with button's data
             self.edit_box.update_picker_button_fields(btn)
             btn.set_selected_style()
+
+    def add_picker_button(self):
+        """Add a new picker button."""
+        self.edit_box.submit_picker()
 
     def update_picker_button(self, picker_data):
         """Handle updating the selected picker button based on data from EditBox."""

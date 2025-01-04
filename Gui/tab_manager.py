@@ -12,6 +12,20 @@ importlib.reload(grid)
 importlib.reload(picker)
 
 
+class PageButtonFrame(QtWidgets.QFrame):
+    def __init__(self, context_menu, parent=None):
+        super().__init__(parent)
+        self.context_menu = context_menu  # Pass the shared context menu
+
+    def mousePressEvent(self, event):
+        if event.button() == QtCore.Qt.RightButton:
+            # Show the context menu for the page button area
+            self.context_menu.set_context_type('page_buttons')
+            self.context_menu.exec_(event.globalPos())
+        else:
+            super().mousePressEvent(event)
+
+
 class TabManager(QtWidgets.QTabWidget):
     """
     Manages the tabs within the Character Picker tool.
@@ -22,12 +36,13 @@ class TabManager(QtWidgets.QTabWidget):
     # Define a signal to handle page change events
     currentPageChanged = QtCore.Signal(int)  # (the new page index)
 
-    def __init__(self, icon_dir, parent=None, context_menu=None):
-        super(TabManager, self).__init__(parent)
+    def __init__(self, icon_dir, character_picker=None, context_menu=None):
+        super(TabManager, self).__init__(character_picker)
         self.icon_dir = icon_dir
         self.context_menu = context_menu
         self.setTabBar(custom.FixedSizeTabBar())
         self.init_tabs()
+
         self.currentChanged.connect(self.update_page_button_styles)
 
     def init_tabs(self):
@@ -107,7 +122,7 @@ class TabManager(QtWidgets.QTabWidget):
             main_layout.setContentsMargins(0, 0, 0, 0)
 
             # Create a frame to hold the page buttons
-            page_button_frame = QtWidgets.QFrame()
+            page_button_frame = PageButtonFrame(self.context_menu, self)
             page_button_frame.setStyleSheet("""
                 QFrame {
                     border: none;
@@ -146,7 +161,12 @@ class TabManager(QtWidgets.QTabWidget):
             self.setTabIcon(tab_index, original_icon)
 
             # Create the default "Main" page by calling add_page_to_current
-            self.add_page_to_current("Main")
+            self.add_page_to_current("Body")
+            print("Default page added successfully.")
+
+            # Set the background image for the first page
+            default_image_path = os.path.join(self.icon_dir, "bodyBackground.svg")
+            QtCore.QTimer.singleShot(0, lambda:self.set_current_page_background(default_image_path))
 
             self.update_page_button_styles()
 
@@ -286,4 +306,37 @@ class TabManager(QtWidgets.QTabWidget):
         # Switch immediately to the new page
         current_tab.stacked_widget.setCurrentWidget(new_page)
         self.update_page_button_styles()
+
+    def set_current_page_background(self, image_path=None):
+        """
+        Set the background image for the current page's GridWidget.
+        If no image_path is provided, prompt the user to select one.
+        """
+        if not image_path:
+            image_path, _ = QtWidgets.QFileDialog.getOpenFileName(
+                self, "Select Background Image", "", "Image Files (*.png *.jpg *.jpeg *.bmp *.svg)"
+            )
+            if not image_path:  # User canceled or no file selected
+                return
+
+        current_tab = self.currentWidget()
+        if current_tab and hasattr(current_tab, "stacked_widget"):
+            current_page = current_tab.stacked_widget.currentWidget()
+            if current_page and isinstance(current_page, grid.GridWidget):
+                current_page.set_background_image(image_path)
+            else:
+                QtWidgets.QMessageBox.warning(self, "Warning", "Current page does not support background images.")
+        else:
+            QtWidgets.QMessageBox.warning(self, "Warning", "No valid page is selected.")
+
+    def mousePressEvent(self, event):
+        if event.button() == QtCore.Qt.RightButton:
+            # Check if the click occurred on the tab bar
+            if self.tabBar().rect().contains(event.pos()):
+                self.context_menu.set_context_type('tab_bar')
+                self.context_menu.exec_(event.globalPos())
+            else:
+                super().mousePressEvent(event)
+        else:
+            super().mousePressEvent(event)
 
