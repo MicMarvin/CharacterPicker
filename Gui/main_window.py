@@ -64,7 +64,7 @@ class CharacterPicker(QtWidgets.QMainWindow):
         self._edit_mode = True  # Start in Edit Mode
 
         # Initialize Edit Box
-        self.edit_box = edit.EditBox(self.icon_dir, character_picker=self, tab_manager=self.tab_manager, context_menu=self.context_menu)
+        self.edit_box = edit.EditBox(self.icon_dir, tab_manager=self.tab_manager, context_menu=self.context_menu)
         self.edit_box.setVisible(self._edit_mode)
         outer_layout.addWidget(self.edit_box)
         self.menu_bar.toolbox_visibility_action.setChecked(self._edit_mode)

@@ -107,31 +107,36 @@ class FixedSizeTabBar(QtWidgets.QTabBar):
 
 
 class CollapsibleBox(QtWidgets.QWidget):
-    toggled = QtCore.Signal(bool)  # Signal emitted when the box is toggled (open/close)
+    toggled = QtCore.Signal(bool)  # Signal emitted when toggled (open/close)
 
-    def __init__(self, title="", parent=None):
+    def __init__(self, title="", parent=None, use_custom_icons=False):
         super(CollapsibleBox, self).__init__(parent)
         self.is_open = False
+        self.use_custom_icons = use_custom_icons  # Custom icons toggle
         self.init_ui(title)
+        self.update_font_color()  # Ensure initial font color matches state
 
     def init_ui(self, title):
-        # Create toggle button
-        self.toggle_button = QtWidgets.QToolButton(text=title)
+        # Toggle button
+        self.toggle_button = QtWidgets.QToolButton()
         self.toggle_button.setStyleSheet("QToolButton { border: none; }")
         self.toggle_button.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
-        self.toggle_button.setArrowType(QtCore.Qt.RightArrow)
         self.toggle_button.setCheckable(True)
         self.toggle_button.setChecked(self.is_open)
+        self.toggle_button.setText(title)
         self.toggle_button.clicked.connect(self.on_toggle)
 
-        # Content container with a border
+        # Set initial icon
+        self.update_icon()
+
+        # Content area
         self.content_widget = QtWidgets.QFrame()
-        self.content_widget.setFrameShape(QtWidgets.QFrame.StyledPanel)
+        self.content_widget.setFrameShape(QtWidgets.QFrame.NoFrame)
         self.content_layout = QtWidgets.QVBoxLayout()
-        self.content_layout.setContentsMargins(10, 10, 10, 10)  # Add padding
-        self.content_layout.setSpacing(10)  # Add spacing
+        self.content_layout.setContentsMargins(10, 10, 10, 10)
+        self.content_layout.setSpacing(10)
         self.content_widget.setLayout(self.content_layout)
-        self.content_widget.setVisible(False)  # Initially collapsed
+        self.content_widget.setVisible(False)
 
         # Main layout
         main_layout = QtWidgets.QVBoxLayout(self)
@@ -141,19 +146,42 @@ class CollapsibleBox(QtWidgets.QWidget):
         main_layout.addWidget(self.content_widget)
 
     def setContentLayout(self, layout):
-        """Sets the content layout for the collapsible box."""
-        # Clear existing layout
+        """Set the layout for the content area."""
         while self.content_layout.count():
             item = self.content_layout.takeAt(0)
-            widget = item.widget()
-            if widget:
-                widget.deleteLater()
-
+            if item.widget():
+                item.widget().deleteLater()
         self.content_layout.addLayout(layout)
 
     def on_toggle(self):
         self.is_open = not self.is_open
-        self.toggle_button.setArrowType(QtCore.Qt.DownArrow if self.is_open else QtCore.Qt.RightArrow)
+        self.update_icon()
+        # Update the content visibility
         self.content_widget.setVisible(self.is_open)
+
+        # Update the font color
+        self.update_font_color()
+
+        # Emit the toggled signal
         self.toggled.emit(self.is_open)
-        self.content_widget.setVisible(self.is_open)
+
+    def update_font_color(self):
+        """Update the font color based on the open/closed state."""
+        if self.use_custom_icons:
+            open_color = "#f9aa26"  # White for open
+            closed_color = "#a2a2a2"  # Grey for closed
+            font_color = open_color if self.is_open else closed_color
+            self.toggle_button.setStyleSheet(f"""
+                QToolButton {{
+                    color: {font_color};
+                    border: none;
+                }}
+            """)
+
+    def update_icon(self):
+        """Update the icon based on the toggle state."""
+        if self.use_custom_icons:
+            self.toggle_button.setIcon(QtGui.QIcon(":checkboxOn.png" if self.is_open else ":checkboxOff.png"))
+        else:
+            self.toggle_button.setArrowType(QtCore.Qt.DownArrow if self.is_open else QtCore.Qt.RightArrow)
+

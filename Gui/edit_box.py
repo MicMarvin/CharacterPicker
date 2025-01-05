@@ -12,22 +12,26 @@ class EditBox(QtWidgets.QGroupBox):
     picker_updated = QtCore.Signal(dict)  # {'label', 'grid_pos', 'size_in_cells'}
     add_button_signal = QtCore.Signal()  # No additional data
 
-    def __init__(self, icon_dir, character_picker=None, tab_manager=None, context_menu=None):
-        super(EditBox, self).__init__("ToolBox", character_picker)
+    def __init__(self, icon_dir, parent=None, tab_manager=None, context_menu=None):
+        super(EditBox, self).__init__(parent)
         self.icon_dir = icon_dir
-        self.character_picker = character_picker  # Store reference
         self.tab_manager = tab_manager  # Store a reference to the tab_manager
         self.context_menu = context_menu  # Pass the shared context menu
-        self.init_ui()
 
-    def init_ui(self):
-        layout = QtWidgets.QVBoxLayout(self)
-        layout.setSpacing(10)
+        # Wrap the entire toolbox in a collapsible box
+        self.tool_box_collapsible = custom.CollapsibleBox("ToolBox", use_custom_icons=True)
+        main_layout = QtWidgets.QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.addWidget(self.tool_box_collapsible)
 
-        # Add sections
-        self.character_settings = self.add_character_settings(layout)
-        self.page_settings = self.add_page_settings(layout)
-        self.picker_button_controls = self.add_picker_button_controls(layout)
+        # Add the sections (Character, Page, Picker) as the content of the collapsible box
+        tool_box_content_layout = QtWidgets.QVBoxLayout()
+        tool_box_content_layout.setSpacing(10)
+
+        # Add individual sections
+        self.character_settings = self.add_character_settings(tool_box_content_layout)
+        self.page_settings = self.add_page_settings(tool_box_content_layout)
+        self.picker_button_controls = self.add_picker_button_controls(tool_box_content_layout)
 
         # Connect toggled signals
         self.character_settings.toggled.connect(self.handle_section_toggle)
@@ -37,6 +41,18 @@ class EditBox(QtWidgets.QGroupBox):
         # Ensure only one section starts open
         self.character_settings.toggle_button.setChecked(True)
         self.character_settings.on_toggle()
+
+        # Set the content layout for the collapsible ToolBox
+        self.tool_box_collapsible.setContentLayout(tool_box_content_layout)
+
+        self.setStyleSheet("""
+            QGroupBox {
+                border: 1px solid #2d2d2d;  /* Black border */
+                border-radius: 0px;         /* Rounded corners (optional) */
+                background-color: #373737;  /* Grey background (adjust if needed) */
+                margin-top: 10px;           /* Space for the title */
+            }
+        """)
 
     def handle_section_toggle(self, is_open):
         """Ensure only one section is open at a time."""
