@@ -13,9 +13,46 @@ importlib.reload(picker)
 
 
 class PageButtonFrame(QtWidgets.QFrame):
-    def __init__(self, context_menu, parent=None):
+    def __init__(self, icon_dir, context_menu, character_picker, parent=None):
         super().__init__(parent)
+        self.icon_dir = icon_dir
         self.context_menu = context_menu  # Pass the shared context menu
+        self.character_picker = character_picker
+
+        # Main horizontal layout
+        self.main_layout = QtWidgets.QHBoxLayout(self)
+        self.main_layout.setContentsMargins(10, 10, 10, 10)
+        self.main_layout.setSpacing(10)
+
+        # Layout for dynamic page buttons (left)
+        self.dynamic_buttons_layout = QtWidgets.QHBoxLayout()
+        self.dynamic_buttons_layout.setSpacing(5)  # Adjust spacing as needed
+        self.main_layout.addLayout(self.dynamic_buttons_layout)
+
+        # Permanent button on the right
+        self.add_page_button = QtWidgets.QPushButton()
+        self.add_page_button.setFixedSize(25, 25)  # Set fixed size
+        self.add_page_button.setToolTip("Add Page")
+        self.add_page_button.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                border: none;
+            }
+        """)
+
+        # Set the icon for the button
+        icon_path = os.path.join(self.icon_dir, "plus.svg")
+        if os.path.exists(icon_path):
+            self.add_page_button.setIcon(QtGui.QIcon(icon_path))
+        else:
+            print(f"Icon file not found: {icon_path}")
+
+        self.add_page_button.clicked.connect(self.handle_add_page_clicked)
+        self.main_layout.addWidget(self.add_page_button)
+
+    def add_dynamic_button(self, button: QtWidgets.QPushButton):
+        """Add a new dynamic button to the layout."""
+        self.dynamic_buttons_layout.addWidget(button)
 
     def mousePressEvent(self, event):
         if event.button() == QtCore.Qt.RightButton:
@@ -24,6 +61,13 @@ class PageButtonFrame(QtWidgets.QFrame):
             self.context_menu.exec_(event.globalPos())
         else:
             super().mousePressEvent(event)
+
+    def handle_add_page_clicked(self):
+        """Call the TabManager's add_page_to_current method."""
+        if hasattr(self.character_picker, 'handle_add_page'):
+            self.character_picker.handle_add_page()
+        else:
+            print("CharacterPicker does not have 'handle_add_page' method.")
 
 
 class TabManager(QtWidgets.QTabWidget):
@@ -40,6 +84,7 @@ class TabManager(QtWidgets.QTabWidget):
         super(TabManager, self).__init__(character_picker)
         self.icon_dir = icon_dir
         self.context_menu = context_menu
+        self.character_picker = character_picker
         self.setTabBar(custom.FixedSizeTabBar())
         self.init_tabs()
 
@@ -122,17 +167,21 @@ class TabManager(QtWidgets.QTabWidget):
             main_layout.setContentsMargins(0, 0, 0, 0)
 
             # Create a frame to hold the page buttons
-            page_button_frame = PageButtonFrame(self.context_menu, self)
+            page_button_frame = PageButtonFrame(self.icon_dir, self.context_menu, self.character_picker, self)
             page_button_frame.setStyleSheet("""
                 QFrame {
                     border: none;
                     border-bottom: 1px solid #2d2d2d;
                 }
             """)
+
+            # Create the layout for the page buttons and add it to the frame
             page_button_layout = QtWidgets.QHBoxLayout(page_button_frame)
             page_button_layout.setContentsMargins(10, 10, 10, 10)
+            page_button_layout.setSpacing(5)  # Adjust spacing as needed
 
-            # Store a reference to the layout on the tab object
+            # Assign the frame and layout to the character_tab
+            character_tab.page_button_frame = page_button_frame
             character_tab.page_button_layout = page_button_layout
 
             # Add the frame containing the page buttons to the main layout
@@ -297,8 +346,8 @@ class TabManager(QtWidgets.QTabWidget):
             )
         )
 
-        # Add the new button to the page_button_layout
-        current_tab.page_button_layout.addWidget(page_button)
+        # Add the new button to the dynamic buttons layout
+        current_tab.page_button_frame.add_dynamic_button(page_button)
 
         # Store the reference in page_buttons dict
         current_tab.page_buttons[page_button] = new_page
