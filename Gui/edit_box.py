@@ -17,57 +17,55 @@ class EditBox(QtWidgets.QGroupBox):
         self.icon_dir = icon_dir
         self.tab_manager = tab_manager  # Store a reference to the tab_manager
         self.context_menu = context_menu  # Pass the shared context menu
+        self.currently_open_section = None  # Track which CollapsibleBox is open
 
-        # Wrap the entire toolbox in a collapsible box
-        self.tool_box_collapsible = custom.CollapsibleBox("ToolBox", use_custom_icons=True)
-        main_layout = QtWidgets.QVBoxLayout(self)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.addWidget(self.tool_box_collapsible)
+        # Main layout for the content
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
 
-        # Add the sections (Character, Page, Picker) as the content of the collapsible box
-        tool_box_content_layout = QtWidgets.QVBoxLayout()
-        tool_box_content_layout.setSpacing(10)
-
-        # Add individual sections
-        self.character_settings = self.add_character_settings(tool_box_content_layout)
-        self.page_settings = self.add_page_settings(tool_box_content_layout)
-        self.picker_button_controls = self.add_picker_button_controls(tool_box_content_layout)
+        # Add sections to the ToolBox
+        self.character_settings = self.add_character_settings(layout)
+        self.page_settings = self.add_page_settings(layout)
+        self.picker_button_controls = self.add_picker_button_controls(layout)
 
         # Connect toggled signals
         self.character_settings.toggled.connect(self.handle_section_toggle)
         self.page_settings.toggled.connect(self.handle_section_toggle)
         self.picker_button_controls.toggled.connect(self.handle_section_toggle)
 
-        # Ensure only one section starts open
-        self.character_settings.toggle_button.setChecked(True)
-        self.character_settings.on_toggle()
-
-        # Set the content layout for the collapsible ToolBox
-        self.tool_box_collapsible.setContentLayout(tool_box_content_layout)
-
         self.setStyleSheet("""
             QGroupBox {
-                border: 1px solid #2d2d2d;  /* Black border */
+                border: 0px solid #2d2d2d;  /* Black border */
                 border-radius: 0px;         /* Rounded corners (optional) */
                 background-color: #373737;  /* Grey background (adjust if needed) */
-                margin-top: 10px;           /* Space for the title */
+                margin-top: 0px;           /* Space for the title */
             }
         """)
 
     def handle_section_toggle(self, is_open):
-        """Ensure only one section is open at a time."""
-        if not is_open:
-            return  # No need to handle closing a section
+        sender = self.sender()  # The CollapsibleBox that just got toggled
+        main_window = self.window()
 
-        sender = self.sender()  # Get the section that emitted the signal
+        # If the user is opening this 'sender' subsection
+        if is_open:
+            new_height = sender.content_widget.sizeHint().height()
+            if self.currently_open_section and self.currently_open_section != sender:
+                old_height = self.currently_open_section.content_widget.sizeHint().height()
+                self.currently_open_section.close_silently()  # no signal
+            else:
+                old_height = 0
 
-        # Close other sections
-        for section in [self.character_settings, self.page_settings, self.picker_button_controls]:
-            if section != sender and section.is_open:
-                section.toggle_button.blockSignals(True)  # Temporarily block signals
-                section.toggle_button.setChecked(False)
-                section.on_toggle()  # Close the section
-                section.toggle_button.blockSignals(False)
+            delta = new_height - old_height
+            main_window.resize(main_window.width(), main_window.height() + delta)
+            self.currently_open_section = sender
+
+        else:
+            # closing the section that *was* open
+            if self.currently_open_section == sender:
+                old_height = sender.content_widget.sizeHint().height()
+                main_window.resize(main_window.width(), main_window.height() - old_height)
+                self.currently_open_section = None
 
     def set_character_name_field(self, name):
         """Sets the character_name_input field to the given name."""

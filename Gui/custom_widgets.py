@@ -107,7 +107,7 @@ class FixedSizeTabBar(QtWidgets.QTabBar):
 
 
 class CollapsibleBox(QtWidgets.QWidget):
-    toggled = QtCore.Signal(bool)  # Signal emitted when toggled (open/close)
+    toggled = QtCore.Signal(bool, int)  # Emit open/close state and height change
 
     def __init__(self, title="", parent=None, use_custom_icons=False):
         super(CollapsibleBox, self).__init__(parent)
@@ -156,14 +156,25 @@ class CollapsibleBox(QtWidgets.QWidget):
     def on_toggle(self):
         self.is_open = not self.is_open
         self.update_icon()
+
+        # Calculate the height change
+        if self.is_open:
+            height_change = self.content_widget.sizeHint().height()
+        else:
+            height_change = -self.content_widget.sizeHint().height()
+
         # Update the content visibility
         self.content_widget.setVisible(self.is_open)
 
         # Update the font color
         self.update_font_color()
 
-        # Emit the toggled signal
-        self.toggled.emit(self.is_open)
+        # Emit the toggled signal with the height change
+        self.toggled.emit(self.is_open, abs(height_change))
+
+        # Prevent resizing sibling widgets
+        self.setSizePolicy(QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Fixed)
+        self.updateGeometry()
 
     def update_font_color(self):
         """Update the font color based on the open/closed state."""
@@ -185,3 +196,11 @@ class CollapsibleBox(QtWidgets.QWidget):
         else:
             self.toggle_button.setArrowType(QtCore.Qt.DownArrow if self.is_open else QtCore.Qt.RightArrow)
 
+    def close_silently(self):
+        """Close this collapsible section without emitting toggled."""
+        if self.is_open:
+            self.is_open = False
+            self.toggle_button.setChecked(False)
+            self.content_widget.setVisible(False)
+
+        self.update_icon()

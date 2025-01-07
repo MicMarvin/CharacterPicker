@@ -5,6 +5,7 @@ import CharacterPicker.Gui.edit_box as edit
 import CharacterPicker.Gui.tab_manager as tab
 import CharacterPicker.Gui.context_menu as context
 import CharacterPicker.Logic.grid_widget as grid
+import CharacterPicker.Gui.custom_widgets as custom
 import os
 import importlib
 
@@ -13,6 +14,7 @@ importlib.reload(edit)
 importlib.reload(tab)
 importlib.reload(context)
 importlib.reload(grid)
+importlib.reload(custom)
 
 class CharacterPicker(QtWidgets.QMainWindow):
     def __init__(self, parent=None):
@@ -36,20 +38,7 @@ class CharacterPicker(QtWidgets.QMainWindow):
         self.setMenuBar(self.menu_bar)
 
         # Initialize Tab Manager
-        if self.icon_dir:
-            print(f"Before TabManager: {getattr(self, 'tab_manager', None)}")
-            try:
-                self.tab_manager = tab.TabManager(self.icon_dir, character_picker=self, context_menu=self.context_menu)
-                print(f"TabManager successfully initialized: {self.tab_manager}")
-            except Exception as e:
-                print(f"Error initializing TabManager: {e}")
-                raise
-            print(f"After TabManager: {self.tab_manager}")
-        else:
-            QtWidgets.QMessageBox.warning(
-                self, "Initialization Error", "Icon directory is not properly set. Cannot proceed."
-            )
-            return
+        self.tab_manager = tab.TabManager(self.icon_dir, character_picker=self, context_menu=self.context_menu)
 
         # Initialize central widget
         central_widget = QtWidgets.QWidget()
@@ -61,13 +50,31 @@ class CharacterPicker(QtWidgets.QMainWindow):
         outer_layout.setSpacing(10)
         outer_layout.addWidget(self.tab_manager)
 
-        self._edit_mode = True  # Start in Edit Mode
-
-        # Initialize Edit Box
+        # Initialize Edit Box (content for the ToolBox)
         self.edit_box = edit.EditBox(self.icon_dir, tab_manager=self.tab_manager, context_menu=self.context_menu)
-        self.edit_box.setVisible(self._edit_mode)
-        outer_layout.addWidget(self.edit_box)
-        self.menu_bar.toolbox_visibility_action.setChecked(self._edit_mode)
+
+        # Initialize ToolBox
+        self.tool_box_collapsible = custom.CollapsibleBox("ToolBox", use_custom_icons=True)
+        self.tool_box_collapsible.setObjectName("ToolBox")
+        self.tool_box_collapsible.setStyleSheet("""
+            #ToolBox > QFrame {
+                border: 1px solid #2d2d2d;  /* Black border */
+                background-color: #373737; /* Grey background */
+            }
+        """)
+
+        outer_layout.addWidget(self.tool_box_collapsible)
+
+        # Add Edit Box content to the ToolBox
+        tool_box_content_layout = QtWidgets.QVBoxLayout()
+        tool_box_content_layout.addWidget(self.edit_box)
+        self.tool_box_collapsible.setContentLayout(tool_box_content_layout)
+
+        # Ensure '_edit_mode' is defined
+        self._edit_mode = False
+
+        # Now call the property to set the final desired state
+        self.edit_mode = True
 
         # Initialize selected button
         self.selected_picker_button = None
@@ -91,73 +98,63 @@ class CharacterPicker(QtWidgets.QMainWindow):
         self.update_mode_state()
 
     def toggle_edit_mode(self):
-        """Toggle Edit Mode."""
-        self.edit_mode = not self.edit_mode
+        """Called by 'Switch to Edit/Animate Mode' action."""
+        self.edit_mode = not self._edit_mode  # <-- use the property
+
+    def toggle_tool_box(self, open: bool):
+        """Called by 'View -> ToolBox' menu action."""
+        self.edit_mode = open  # <-- use the property
+
+    def on_toolbox_toggled(self, is_open: bool):
+        """Called when user clicks the arrow on CollapsibleBox."""
+        if self._edit_mode != is_open:
+            self.edit_mode = is_open  # <-- use the property
 
     def update_mode_state(self):
         """Update UI components based on the current mode."""
-        # Show/Hide the EditBox
-        self.edit_box.setVisible(self._edit_mode)
+        # Step 1) Physically open/close the ToolBox
+        if self.tool_box_collapsible.is_open != self._edit_mode:
+            self.tool_box_collapsible.toggle_button.setChecked(self._edit_mode)
+            self.tool_box_collapsible.on_toggle()
 
-        # Safely update menu actions in MenuBar
-        actions = [
+        # Step 2) Update the toolbox_visibility_action
+        toolbox_visibility_action = self.menu_bar.toolbox_visibility_action
+        if toolbox_visibility_action:
+            toolbox_visibility_action.setChecked(self._edit_mode)
+
+        # Step 3) The "Switch to Animate/Edit Mode" text
+        text = "Switch to Animate Mode" if self._edit_mode else "Switch to Edit Mode"
+
+        # Menubar current_mode_action
+        if self.menu_bar.current_mode_action:
+            self.menu_bar.current_mode_action.setText(text)
+
+        # ContextMenu current_mode_action
+        if self.context_menu and self.context_menu.current_mode_action:
+            self.context_menu.current_mode_action.setText(text)
+
+        # Step 4) Enable or disable context menu actions
+        for action in [
+            self.context_menu.add_button_action,
+            self.context_menu.delete_button_action,
+            self.context_menu.add_page_action,
+            self.context_menu.remove_page_action
+        ]:
+            if action:
+                action.setEnabled(self._edit_mode)
+
+        # Step 5) Enable/disable relevant menu actions
+        for action_name, action in [
             ("add_page_action", self.menu_bar.add_page_action),
             ("add_button_action", self.menu_bar.add_button_action),
             ("remove_page_action", self.menu_bar.remove_page_action),
             ("rename_page_action", self.menu_bar.rename_page_action),
             ("delete_button_action", self.menu_bar.delete_button_action),
-        ]
-
-        for action_name, action in actions:
+        ]:
             if action:
-                try:
-                    action.setEnabled(self._edit_mode)
-                except RuntimeError as e:
-                    print(f"Error updating {action_name}: {e}")
+                action.setEnabled(self._edit_mode)
             else:
-                print(f"Action {action_name} is already deleted or does not exist.")
-
-        # Update the text of the current_mode_action safely
-        current_mode_action_text = "Switch to Animate Mode" if self._edit_mode else "Switch to Edit Mode"
-
-        # Update MenuBar current_mode_action
-        current_mode_action = self.menu_bar.current_mode_action
-        if current_mode_action:
-            try:
-                current_mode_action.setText(current_mode_action_text)
-            except RuntimeError as e:
-                print(f"Error updating MenuBar current_mode_action: {e}")
-
-        # Update ContextMenu actions and current_mode_action text
-        if self.context_menu:
-            try:
-                # Update the text of the current_mode_action in ContextMenu
-                self.context_menu.current_mode_action.setText(current_mode_action_text)
-
-                # Update enabled state of actions in ContextMenu
-                for action in [self.context_menu.add_button_action,
-                               self.context_menu.delete_button_action,
-                               self.context_menu.add_page_action,
-                               self.context_menu.remove_page_action]:
-                    if action:
-                        action.setEnabled(self._edit_mode)
-            except RuntimeError as e:
-                print(f"Error updating ContextMenu actions: {e}")
-
-        # Synchronize toolbox_visibility_action's checked state with _edit_mode
-        toolbox_visibility_action = self.menu_bar.toolbox_visibility_action
-        if toolbox_visibility_action:
-            try:
-                toolbox_visibility_action.setChecked(self._edit_mode)
-            except RuntimeError as e:
-                print(f"Error updating toolbox_visibility_action: {e}")
-
-        # # Trigger grid updates
-        # for tab_widget in self.tab_manager.children():
-        #     if isinstance(tab_widget, QtWidgets.QWidget) and hasattr(tab_widget, "stacked_widget"):
-        #         for page in tab_widget.stacked_widget.children():
-        #             if isinstance(page, grid.GridWidget):
-        #                 page.update()
+                print(f"Action {action_name} does not exist.")
 
     def connect_signals(self):
         """Connect signals between components."""
@@ -184,7 +181,7 @@ class CharacterPicker(QtWidgets.QMainWindow):
         self.menu_bar.add_button_action.triggered.connect(self.tab_manager.add_button_to_current)
         self.menu_bar.close_tab_action.triggered.connect(self.remove_current_character)
         self.menu_bar.current_mode_action.triggered.connect(self.toggle_edit_mode)
-        self.menu_bar.toolbox_visibility_action.toggled.connect(self.toggle_toolbox_visibility)
+        self.menu_bar.toolbox_visibility_action.toggled.connect(self.toggle_tool_box)
 
         # Connect ContextMenu actions to appropriate methods
         self.context_menu.change_background_action.triggered.connect(self.tab_manager.set_current_page_background)
@@ -202,6 +199,9 @@ class CharacterPicker(QtWidgets.QMainWindow):
         # Connect other signals
         self.tab_manager.currentChanged.connect(self.on_tab_changed) # Tab change
         self.tab_manager.currentPageChanged.connect(self.on_page_changed) # Page change
+        # Connect the toggle signal for resizing
+        self.tool_box_collapsible.toggled.connect(self.resize_for_toolbox)
+        self.tool_box_collapsible.toggled.connect(self.on_toolbox_toggled)
 
     def handle_add_character(self):
         """Handle adding a new character tab."""
@@ -373,11 +373,34 @@ class CharacterPicker(QtWidgets.QMainWindow):
 
         print("Current page removed successfully.")
 
-    def toggle_toolbox_visibility(self, checked):
-        """Show or hide the EditBox (ToolBox) based on the action's checked state."""
-        self.edit_box.setVisible(checked)
-        # Optional: Synchronize the state of edit mode with toolbox visibility
-        self.edit_mode = checked
+    def resize_for_toolbox(self, is_open, height_change, is_top_level=False):
+        """
+        Adjust the window height dynamically for both top-level ToolBox and sub-sections.
+
+        :param is_open: Whether the toggled item is being opened or closed.
+        :param height_change: The height adjustment to apply (positive for open, negative for close).
+        :param is_top_level: Whether this is for the top-level ToolBox (default: False).
+        """
+        # Current window size
+        current_size = self.size()
+
+        # Ensure height change is calculated properly
+        if height_change == 0:
+            print("No height change detected.")
+            return
+
+        if not is_open:
+            # Reverse the height change for collapsing
+            height_change = -abs(height_change)
+
+        # Apply the new height
+        new_height = current_size.height() + height_change
+
+        # Ensure we don't go below the minimum height
+        new_height = max(self.minimumHeight(), new_height)
+
+        # Apply the resize
+        self.resize(current_size.width(), new_height)
 
     def set_selected_picker_button(self, btn):
         """

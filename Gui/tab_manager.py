@@ -211,7 +211,6 @@ class TabManager(QtWidgets.QTabWidget):
 
             # Create the default "Main" page by calling add_page_to_current
             self.add_page_to_current("Body")
-            print("Default page added successfully.")
 
             # Set the background image for the first page
             default_image_path = os.path.join(self.icon_dir, "bodyBackground.svg")
