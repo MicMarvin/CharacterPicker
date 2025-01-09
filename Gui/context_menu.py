@@ -89,6 +89,11 @@ class ContextMenu(QtWidgets.QMenu):
         elif context_type == 'tool_box':
             self.current_mode_action.setVisible(True)
             self.current_mode_action.setEnabled(True)
+        elif context_type == 'button':
+            self.delete_button_action.setVisible(True)
+            self.delete_button_action.setEnabled(self.parent_window.edit_mode)
+            self.separator1.setVisible(True)
+            self.current_mode_action.setVisible(True)
 
         # Update current_mode_action text
         self.current_mode_action.setText(

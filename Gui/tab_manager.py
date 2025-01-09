@@ -266,42 +266,18 @@ class TabManager(QtWidgets.QTabWidget):
                     }
                 """)
 
-    def add_picker_button(self, picker_data):
-        """Add a picker button based on the provided picker_data."""
+    def get_current_grid_widget(self):
+        """
+        Return the GridWidget of the currently selected tab/page, or None if invalid.
+        """
         current_tab = self.currentWidget()
         if not current_tab or not hasattr(current_tab, "stacked_widget"):
-            QtWidgets.QMessageBox.warning(self, "Warning", "No valid character tab selected.")
-            return
+            return None
 
         current_page = current_tab.stacked_widget.currentWidget()
         if isinstance(current_page, grid.GridWidget):
-            label = picker_data.get("label", "NewButton")
-            grid_pos = picker_data.get("grid_pos", (0, 0))
-            size_in_cells = picker_data.get("size_in_cells", (1, 1))
-
-            # Create the PickerButton instance
-            picker_button = picker.create_picker_button(
-                label=label,
-                grid_pos=grid_pos,
-                size_in_cells=size_in_cells,
-                parent_grid=current_page
-            )
-            picker_button.button_event.connect(self.on_picker_event)
-
-            # Add to the grid
-            current_page.add_picker_button(picker_button)
-            self.parent().update_picker_button_fields(picker_button)
-        else:
-            QtWidgets.QMessageBox.critical(self, "Error", "Current page is not a valid GridWidget.")
-
-    def add_button_to_current(self):
-        """Add a button to the current sub-page with default picker_data."""
-        default_picker_data = {
-            "label":"NewButton",
-            "grid_pos":(0, 0),
-            "size_in_cells":(1, 1)
-        }
-        self.add_picker_button(default_picker_data)
+            return current_page
+        return None
 
     def on_picker_event(self, event_type, picker_button):
         """Handle picker button events."""

@@ -1,4 +1,4 @@
-# tabs.py
+# custom_widgets.py
 from PySide2 import QtWidgets, QtCore, QtGui
 from PySide2.QtGui import QColor
 import os

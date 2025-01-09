@@ -53,6 +53,20 @@ class GridWidget(QtWidgets.QWidget):
         # Reposition any picker buttons once the widget is shown & sized
         QtCore.QTimer.singleShot(0, self.reposition_all_buttons)
 
+    @property
+    def edit_mode(self):
+        """
+        Returns True if the top-level CharacterPicker is in edit mode,
+        or False otherwise.
+        """
+        # window() gives us the top-level widget containing this GridWidget
+        top_level = self.window()
+        # If the top-level widget (CharacterPicker) has an 'edit_mode' attribute,
+        # return it; otherwise default to False.
+        if hasattr(top_level, "edit_mode"):
+            return top_level.edit_mode
+        return False
+
     def set_background_image(self, image_path):
         """
         Load a background image from the given file path.
@@ -138,7 +152,7 @@ class GridWidget(QtWidgets.QWidget):
         if self.bg_pixmap:
             self.draw_background(painter)
 
-        if self.window().edit_mode:
+        if self.edit_mode:
             self.draw_grid_lines(painter)
 
         painter.end()
@@ -255,14 +269,29 @@ class GridWidget(QtWidgets.QWidget):
             self._drag_start = event.pos()
             event.accept()
 
+        elif event.button() == QtCore.Qt.LeftButton:
+            # Check if user clicked on a child (e.g. a PickerButton)
+            child = self.childAt(event.pos())
+            # If child is None or not a PickerButton, deselect
+            if not child or not isinstance(child, picker.PickerButton):
+                # Deselect in the main window
+                top_level = self.window()
+                if hasattr(top_level, "on_picker_button_event"):
+                    top_level.on_picker_button_event("deselect", None)
+
         elif event.button() == QtCore.Qt.RightButton:
             # Check if a picker button is under the cursor
             child = self.childAt(event.pos())
             selected_button = child if isinstance(child, picker.PickerButton) else None
 
-            # Show the context menu at the global position of the click
-            self.context_menu.set_context_type('grid')
-            self.context_menu.exec_(event.globalPos(), selected_button)
+            if selected_button:
+                self.context_menu.selected_button = selected_button
+                self.context_menu.set_context_type('button')
+            else:
+                self.context_menu.selected_button = None
+                self.context_menu.set_context_type('grid')
+
+            self.context_menu.exec_(event.globalPos())
         else:
             super().mousePressEvent(event)
 
@@ -401,7 +430,7 @@ class GridWidget(QtWidgets.QWidget):
 
     def handle_picker_button_event(self, event_type, btn):
         """
-        Handle different types of button events and forward them.
+        Handle different types of button events and forward them: 'selected', 'run_command', 'moved', 'deselect'.
         """
         if btn:
             btn_label = btn.text()

@@ -8,13 +8,10 @@ importlib.reload(custom)
 
 
 class EditBox(QtWidgets.QGroupBox):
-    picker_added = QtCore.Signal(dict)  # {'label', 'grid_pos', 'size_in_cells'}
-    picker_updated = QtCore.Signal(dict)  # {'label', 'grid_pos', 'size_in_cells'}
-    add_button_signal = QtCore.Signal()  # No additional data
-
-    def __init__(self, icon_dir, parent=None, tab_manager=None, context_menu=None):
-        super(EditBox, self).__init__(parent)
+    def __init__(self, icon_dir, main_window=None, tab_manager=None, context_menu=None):
+        super().__init__(main_window)
         self.icon_dir = icon_dir
+        self.main_window = main_window
         self.tab_manager = tab_manager  # Store a reference to the tab_manager
         self.context_menu = context_menu  # Pass the shared context menu
         self.currently_open_section = None  # Track which CollapsibleBox is open
@@ -340,12 +337,12 @@ class EditBox(QtWidgets.QGroupBox):
 
         # Grid Position
         grid_pos_layout = QtWidgets.QHBoxLayout()
-        self.picker_grid_x = QtWidgets.QDoubleSpinBox()
+        self.picker_grid_x = QtWidgets.QSpinBox()
         self.picker_grid_x.setRange(-9999, 9999)
         self.picker_grid_x.setValue(0)
         grid_pos_layout.addWidget(self.picker_grid_x)
 
-        self.picker_grid_y = QtWidgets.QDoubleSpinBox()
+        self.picker_grid_y = QtWidgets.QSpinBox()
         self.picker_grid_y.setRange(-9999, 9999)
         self.picker_grid_y.setValue(0)
         grid_pos_layout.addWidget(self.picker_grid_y)
@@ -365,9 +362,11 @@ class EditBox(QtWidgets.QGroupBox):
         # Add and Delete Buttons
         button_layout = QtWidgets.QHBoxLayout()
         self.picker_submit_button = QtWidgets.QPushButton("Add")
+        self.picker_submit_button.clicked.connect(self.handle_submit_clicked)
         button_layout.addWidget(self.picker_submit_button)
 
         self.picker_delete_button = QtWidgets.QPushButton("Delete")
+        self.picker_delete_button.clicked.connect(self.handle_delete_clicked)
         button_layout.addWidget(self.picker_delete_button)
         picker_layout.addRow(button_layout)
 
@@ -388,43 +387,57 @@ class EditBox(QtWidgets.QGroupBox):
     # ------------------------
     #  Picker Button Logic
     # ------------------------
-    def submit_picker(self):
-        """Handle Add or Update button clicks."""
+    def get_default_picker_data(self):
+        return {
+            "label": " ",
+            "grid_pos": (0, 0),
+            "size_in_cells": (2, 1),
+            # future expansions: shape, color, command, etc.
+        }
+
+    def handle_submit_clicked(self):
+        """
+        Called when the user clicks the 'Submit' button in the Picker Button section.
+        Gathers form data into a dict, calls main_window.submit_picker.
+        """
+        data_dict = self.get_default_picker_data()
+
         label = self.picker_label_input.text()
-        gx = self.picker_grid_x.value()
-        gy = self.picker_grid_y.value()
-        w = self.picker_width.value()
-        h = self.picker_height.value()
+        data_dict["label"] = label
 
-        if self.picker_submit_button.text() == "Add":
-            # Emit a signal to add a new picker button
-            self.picker_added.emit({
-                "label":label,
-                "grid_pos":(int(gx), int(gy)),
-                "size_in_cells":(w, h)
-            })
-        elif self.picker_submit_button.text() == "Update":
-            # Emit a signal to update the selected picker button
-            self.picker_updated.emit({
-                "label":label,
-                "grid_pos":(int(gx), int(gy)),
-                "size_in_cells":(w, h)
-            })
+        gx = int(self.picker_grid_x.value())
+        gy = int(self.picker_grid_y.value())
+        data_dict["grid_pos"] = (gx, gy)
 
-    def delete_picker(self):
+        w = int(self.picker_width.value())
+        h = int(self.picker_height.value())
+        data_dict["size_in_cells"] = (w, h)
+
+        # shape = ...
+        # color = ...
+        # command = ...
+        # data_dict["shape"] = shape
+        # data_dict["color"] = color
+        # data_dict["command"] = command
+
+        self.main_window.submit_picker(data_dict)
+
+    def handle_delete_clicked(self):
         """Handle Delete button clicks."""
         # Emit a signal to delete the selected picker button
-        self.parent().delete_selected_picker_button()
+        self.main_window.delete_selected_picker_button()
 
     def update_picker_button_fields(self, picker_button):
         """Update the EditBox fields based on the selected picker button."""
         if picker_button is None:
-            # Deselect: clear fields and reset UI
-            self.picker_label_input.setText("")
-            self.picker_grid_x.setValue(0)
-            self.picker_grid_y.setValue(0)
-            self.picker_width.setValue(1)
-            self.picker_height.setValue(1)
+            # Deselect: reset fields to default values
+            data = self.get_default_picker_data()
+
+            self.picker_label_input.setText(data["label"])
+            self.picker_grid_x.setValue(data["grid_pos"][0])
+            self.picker_grid_y.setValue(data["grid_pos"][1])
+            self.picker_width.setValue(data["size_in_cells"][0])
+            self.picker_height.setValue(data["size_in_cells"][1])
 
             self.picker_submit_button.setText("Add")
             self.picker_delete_button.setEnabled(False)

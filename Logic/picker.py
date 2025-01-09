@@ -16,16 +16,6 @@ class PickerButton(QtWidgets.QPushButton):
     def __init__(self, label, grid_widget):
         super().__init__(label, grid_widget)
         self.grid_widget = grid_widget
-        self.grid_x = 0
-        self.grid_y = 0
-        self.width_in_cells = 1
-        self.height_in_cells = 1
-
-        self._dragging = False
-        self._drag_start_pos = None
-
-        # Remove the clicked connection if it exists
-        # self.clicked.disconnect()  # Ensure no residual connections
 
         # Set default style
         self.set_default_style()
@@ -33,9 +23,7 @@ class PickerButton(QtWidgets.QPushButton):
         self.init_ui()
 
     def init_ui(self):
-        self.setFixedSize(self.width_in_cells * 40, self.height_in_cells * 40)  # Adjust cell size as needed
         self.setStyleSheet(self.default_style())
-        self.clicked.connect(self.on_click)
 
     def default_style(self):
         return """
@@ -77,10 +65,11 @@ class PickerButton(QtWidgets.QPushButton):
         self.setGeometry(int(px), int(py), int(w), int(h))
 
     def mousePressEvent(self, event):
-        if event.button() == QtCore.Qt.LeftButton:
-            if self.grid_widget.edit_mode:
-                self._dragging = False  # Reset dragging flag
-                self._drag_start_pos = event.pos()
+        if event.button() == QtCore.Qt.LeftButton and self.grid_widget.edit_mode:
+            self.button_event.emit("selected", self)
+
+            self._dragging = False  # Reset dragging flag
+            self._drag_start_pos = event.pos()
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
@@ -105,6 +94,9 @@ class PickerButton(QtWidgets.QPushButton):
                 self.grid_y = gy
                 self.place_in_grid()
 
+                # Emit “moved” event
+                self.button_event.emit("moved", self)
+
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
@@ -125,13 +117,29 @@ class PickerButton(QtWidgets.QPushButton):
         super().mouseReleaseEvent(event)
 
 
-def create_picker_button(label, grid_pos, size_in_cells, parent_grid):
-    btn = PickerButton(label, parent_grid)
-    btn.grid_x, btn.grid_y = grid_pos
-    btn.width_in_cells, btn.height_in_cells = size_in_cells
+def create_picker_button(grid_widget, data_dict):
+    """
+    Actually create and place a new PickerButton in the given GridWidget.
+    """
+    label = data_dict["label"]
+    gx, gy = data_dict["grid_pos"]
+    w, h = data_dict["size_in_cells"]
+
+    btn = PickerButton(label, grid_widget)
+    btn.grid_x = gx
+    btn.grid_y = gy
+    btn.width_in_cells, btn.height_in_cells = w, h
+
+    # Additional data? e.g. shape, color, command, etc.
+    # btn.shape = data_dict.get("shape", "rectangle")
+    # btn.color = data_dict.get("color", "#ffffff")
+
+    # Place & show
     btn.place_in_grid()
     btn.show()
 
-    # Connect to the grid's handle_picker_button_event
-    btn.button_event.connect(parent_grid.handle_picker_button_event)
+    # Connect the button's events to the grid or tab_manager
+    btn.button_event.connect(grid_widget.handle_picker_button_event)
+
     return btn
+
