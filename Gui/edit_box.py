@@ -359,6 +359,29 @@ class EditBox(QtWidgets.QGroupBox):
         size_layout.addWidget(self.picker_height)
         picker_layout.addRow("Size (w, h):", size_layout)
 
+        # Shape Selection
+        self.shape_combo_box = QtWidgets.QComboBox()
+        self.shape_combo_box.addItems(["rectangle", "circle", "triangle"])
+        picker_layout.addRow("Shape:", self.shape_combo_box)
+
+        # Color Picker
+        self.color_button = QtWidgets.QPushButton()
+        self.color_button.setText("Select Color")
+        self.color_button.clicked.connect(self.open_color_dialog)
+        self.selected_color = "#A6A6A6"  # Default color
+        self.color_button.setStyleSheet(f"background-color: {self.selected_color}")
+        picker_layout.addRow("Color:", self.color_button)
+
+        # Command Mode
+        self.command_mode_combo_box = QtWidgets.QComboBox()
+        self.command_mode_combo_box.addItems(["none", "python", "select"])
+        picker_layout.addRow("Command Mode:", self.command_mode_combo_box)
+
+        # Command String
+        self.command_text_edit = QtWidgets.QPlainTextEdit()
+        self.command_text_edit.setPlaceholderText("Enter Python code or object names (comma-separated)")
+        picker_layout.addRow("Command:", self.command_text_edit)
+
         # Add and Delete Buttons
         button_layout = QtWidgets.QHBoxLayout()
         self.picker_submit_button = QtWidgets.QPushButton("Add")
@@ -387,14 +410,24 @@ class EditBox(QtWidgets.QGroupBox):
     # ------------------------
     #  Picker Button Logic
     # ------------------------
+    def open_color_dialog(self):
+        """Open a color dialog to select a color."""
+        color = QtWidgets.QColorDialog.getColor(initial=QtGui.QColor(self.selected_color), parent=self, title="Select Button Color")
+        if color.isValid():
+            self.selected_color = color.name()
+            self.color_button.setStyleSheet(f"background-color: {self.selected_color}")
+
     def get_default_picker_data(self):
         return {
             "label": " ",
             "grid_pos": (0, 0),
-            "size_in_cells": (2, 1),
-            # future expansions: shape, color, command, etc.
+            "size_in_cells": (1, 1),
+            "shape": "rectangle",
+            "color": "#A6A6A6",
+            "command_mode": "select",
+            "command_string": ""
         }
-
+    
     def handle_submit_clicked(self):
         """
         Called when the user clicks the 'Submit' button in the Picker Button section.
@@ -413,12 +446,19 @@ class EditBox(QtWidgets.QGroupBox):
         h = int(self.picker_height.value())
         data_dict["size_in_cells"] = (w, h)
 
-        # shape = ...
-        # color = ...
-        # command = ...
-        # data_dict["shape"] = shape
-        # data_dict["color"] = color
-        # data_dict["command"] = command
+        # Shape Selection
+        shape = self.shape_combo_box.currentText()
+        data_dict["shape"] = shape
+
+        # Color Selection
+        data_dict["color"] = self.selected_color
+
+        # Command Mode and String
+        command_mode = self.command_mode_combo_box.currentText()
+        data_dict["command_mode"] = command_mode
+
+        command_string = self.command_text_edit.toPlainText().strip()
+        data_dict["command_string"] = command_string
 
         self.main_window.submit_picker(data_dict)
 
@@ -428,9 +468,13 @@ class EditBox(QtWidgets.QGroupBox):
         self.main_window.delete_selected_picker_button()
 
     def update_picker_button_fields(self, picker_button):
-        """Update the EditBox fields based on the selected picker button."""
+        """
+        Update the EditBox fields based on the selected picker button or defaults.
+
+        :param picker_button: The PickerButton instance or None.
+        """
         if picker_button is None:
-            # Deselect: reset fields to default values
+            # Populate with default values
             data = self.get_default_picker_data()
 
             self.picker_label_input.setText(data["label"])
@@ -439,16 +483,54 @@ class EditBox(QtWidgets.QGroupBox):
             self.picker_width.setValue(data["size_in_cells"][0])
             self.picker_height.setValue(data["size_in_cells"][1])
 
+            # Shape
+            index = self.shape_combo_box.findText(data["shape"])
+            if index != -1:
+                self.shape_combo_box.setCurrentIndex(index)
+
+            # Color
+            self.selected_color = data["color"]
+            self.color_button.setStyleSheet(f"background-color: {self.selected_color}")
+
+            # Command Mode
+            index = self.command_mode_combo_box.findText(data["command_mode"])
+            if index != -1:
+                self.command_mode_combo_box.setCurrentIndex(index)
+
+            # Command String
+            self.command_text_edit.setPlainText(data["command_string"])
+
+            # Update buttons
             self.picker_submit_button.setText("Add")
             self.picker_delete_button.setEnabled(False)
         else:
-            # Select: populate fields with button's data
-            self.picker_label_input.setText(picker_button.text())
-            self.picker_grid_x.setValue(picker_button.grid_x)
-            self.picker_grid_y.setValue(picker_button.grid_y)
-            self.picker_width.setValue(picker_button.width_in_cells)
-            self.picker_height.setValue(picker_button.height_in_cells)
+            # Populate with picker_button's data
+            data = picker_button.data_dict
 
+            self.picker_label_input.setText(data["label"])
+            self.picker_grid_x.setValue(data["grid_pos"][0])
+            self.picker_grid_y.setValue(data["grid_pos"][1])
+            self.picker_width.setValue(data["size_in_cells"][0])
+            self.picker_height.setValue(data["size_in_cells"][1])
+
+            # Shape
+            index = self.shape_combo_box.findText(data["shape"])
+            if index != -1:
+                self.shape_combo_box.setCurrentIndex(index)
+
+            # Color
+            self.selected_color = data["color"]
+            self.color_button.setStyleSheet(f"background-color: {self.selected_color}")
+
+            # Command Mode
+            index = self.command_mode_combo_box.findText(data["command_mode"])
+            if index != -1:
+                self.command_mode_combo_box.setCurrentIndex(index)
+
+            # Command String
+            self.command_text_edit.setPlainText(data["command_string"])
+
+            # Update buttons
             self.picker_submit_button.setText("Update")
             self.picker_delete_button.setEnabled(True)
 

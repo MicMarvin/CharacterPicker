@@ -440,13 +440,59 @@ class CharacterPicker(QtWidgets.QMainWindow):
             # Update the currently selected picker button
             self._update_picker_button(self.selected_picker_button, data_dict)
 
+    def _create_picker_button(self, data_dict):
+        """
+        Actually create and place a new picker button based on data_dict.
+        """
+        current_grid = self.tab_manager.get_current_grid_widget()
+        if not current_grid:
+            QtWidgets.QMessageBox.warning(self, "Error", "No valid grid on the current tab.")
+            return
+
+        # Actually create it
+        new_btn = picker.create_picker_button(current_grid, data_dict)
+        self.set_selected_picker_button(new_btn)
+
+    def _update_picker_button(self, btn, data_dict):
+        """
+        Apply changes to an existing picker button 'btn' with data_dict.
+        """
+        # Update explicit attributes using property setters
+        if "label" in data_dict:
+            btn.setText(data_dict["label"])
+            btn.data_dict["label"] = data_dict["label"]
+
+        if "grid_pos" in data_dict:
+            btn.grid_pos = data_dict["grid_pos"]
+
+        if "size_in_cells" in data_dict:
+            btn.size_in_cells = data_dict["size_in_cells"]
+
+        if "shape" in data_dict:
+            btn.shape = data_dict["shape"]
+
+        if "color" in data_dict:
+            btn.color = data_dict["color"]
+
+        if "command_mode" in data_dict:
+            btn.command_mode = data_dict["command_mode"]
+
+        if "command_string" in data_dict:
+            btn.command_string = data_dict["command_string"]
+
+        # Trigger repaint to reflect new shape/color
+        btn.update()
+
+        # Optionally, update the EditBox fields
+        self.edit_box.update_picker_button_fields(btn)
+
     def set_selected_picker_button(self, btn):
         """
         Select or deselect a picker button.
         """
         # Deselect previously selected button
         if self.selected_picker_button and self.selected_picker_button != btn:
-            self.selected_picker_button.set_default_style()
+            self.selected_picker_button.set_unselected_style()
 
         self.selected_picker_button = btn
 
@@ -457,31 +503,6 @@ class CharacterPicker(QtWidgets.QMainWindow):
             # Select: populate fields with button's data
             self.edit_box.update_picker_button_fields(btn)
             btn.set_selected_style()
-
-    def update_picker_button(self, picker_data):
-        """Handle updating the selected picker button based on data from EditBox."""
-        if not self.selected_picker_button:
-            QtWidgets.QMessageBox.warning(self, "Warning", "No picker button selected to update.")
-            return
-
-        label = picker_data.get("label", self.selected_picker_button.text())
-        grid_pos = picker_data.get("grid_pos", (self.selected_picker_button.grid_x, self.selected_picker_button.grid_y))
-        size_in_cells = picker_data.get("size_in_cells", (
-            self.selected_picker_button.width_in_cells, self.selected_picker_button.height_in_cells))
-
-        # Update picker button attributes
-        self.selected_picker_button.setText(label)
-        self.selected_picker_button.grid_x, self.selected_picker_button.grid_y = grid_pos
-        self.selected_picker_button.width_in_cells, self.selected_picker_button.height_in_cells = size_in_cells
-        self.selected_picker_button.setFixedSize(self.selected_picker_button.width_in_cells * 40,
-                                                 self.selected_picker_button.height_in_cells * 40)  # Adjust cell size as needed
-
-        # Update grid placement
-        current_tab = self.tab_manager.currentWidget()
-        if current_tab and hasattr(current_tab, "stacked_widget"):
-            current_page = current_tab.stacked_widget.currentWidget()
-            if isinstance(current_page, grid.GridWidget):
-                current_page.add_picker_button(self.selected_picker_button)  # Re-add to grid to update position
 
     def delete_selected_picker_button(self, btn=None):
         """
@@ -531,38 +552,6 @@ class CharacterPicker(QtWidgets.QMainWindow):
             # Possibly call btn.execute_command()
         else:
             print(f"Unknown picker event: {event_type} for button {btn.text() if btn else 'None'}")
-
-    def _create_picker_button(self, data_dict):
-        """
-        Actually create and place a new picker button based on data_dict.
-        """
-        current_grid = self.tab_manager.get_current_grid_widget()
-        if not current_grid:
-            QtWidgets.QMessageBox.warning(self, "Error", "No valid grid on the current tab.")
-            return
-
-        # Actually create it
-        new_btn = picker.create_picker_button(current_grid, data_dict)
-        self.set_selected_picker_button(new_btn)
-
-    def _update_picker_button(self, btn, data_dict):
-        """
-        Apply changes to an existing picker button 'btn' with data_dict.
-        """
-        btn.setText(data_dict["label"])
-        gx, gy = data_dict["grid_pos"]
-        w, h = data_dict["size_in_cells"]
-
-        btn.grid_x, btn.grid_y = gx, gy
-        btn.width_in_cells, btn.height_in_cells = w, h
-        btn.place_in_grid()
-        # If you have shape/color/command, set them here
-        # e.g. btn.shape = merged_data["shape"]
-        #      btn.color = merged_data["color"]
-        #      btn.command = merged_data["command_string"]
-
-        # Re-populate the EditBox to reflect the new data (optional)
-        self.edit_box.update_picker_button_fields(btn)
 
     def on_tab_changed(self, index):
         """

@@ -13,61 +13,139 @@ class PickerButton(QtWidgets.QPushButton):
     # Define a drag threshold (in pixels)
     DRAG_THRESHOLD = 15
 
-    def __init__(self, label, grid_widget):
+    def __init__(self, data_dict=None, grid_widget=None):
+        if data_dict is None:
+            raise ValueError("data_dict must be provided to initialize PickerButton.")
+        label = data_dict.get("label", " ")
         super().__init__(label, grid_widget)
         self.grid_widget = grid_widget
+        self.data_dict = data_dict
 
-        # Set default style
-        self.set_default_style()
+        # Initialize explicit attributes with private variables
+        self._label = self.data_dict["label"]
+        self._shape = self.data_dict["shape"]
+        self._color = self.data_dict["color"]
+        self._command_mode = self.data_dict["command_mode"]
+        self._command_string = self.data_dict["command_string"]
+        self._grid_pos = self.data_dict["grid_pos"]
+        self._size_in_cells = self.data_dict["size_in_cells"]
+        
+        # Selection state
+        self._selected = False
 
-        self.init_ui()
+        # Initialize dragging flags
+        self._dragging = False
+        self._drag_start_pos = None
 
-    def init_ui(self):
-        self.setStyleSheet(self.default_style())
+        # Initialize hover state
+        self._hovered = False
 
-    def default_style(self):
-        return """
-            QPushButton {
-                border: 1px solid #2d2d2d;
-                background-color: #373737;
-                color: #A6A6A6;
-                font-size: 14px;
-            }
-            QPushButton:hover {
-                border: 2px solid #f9aa26;
-                color: #FFFFFF;
-            }
-            QPushButton:pressed {
-                background-color: #2d2d2d;
-            }
-        """
+        # Enable hover events
+        self.setAttribute(QtCore.Qt.WA_Hover, True)
+        self.setMouseTracking(True)  # Optional
+    
+    # ------------------- Property Setters and Getters -------------------
+
+    @property
+    def shape(self):
+        return self._shape
+
+    @shape.setter
+    def shape(self, value):
+        self._shape = value
+        self.data_dict["shape"] = value
+        self.update()  # Trigger repaint
+
+    @property
+    def color(self):
+        return self._color
+
+    @color.setter
+    def color(self, value):
+        self._color = value
+        self.data_dict["color"] = value
+        self.update()
+
+    @property
+    def command_mode(self):
+        return self._command_mode
+
+    @command_mode.setter
+    def command_mode(self, value):
+        self._command_mode = value
+        self.data_dict["command_mode"] = value
+
+    @property
+    def command_string(self):
+        return self._command_string
+
+    @command_string.setter
+    def command_string(self, value):
+        self._command_string = value
+        self.data_dict["command_string"] = value
+
+    @property
+    def grid_pos(self):
+        return self._grid_pos
+
+    @grid_pos.setter
+    def grid_pos(self, value):
+        self._grid_pos = value
+        self.data_dict["grid_pos"] = value
+        self.place_in_grid()
+
+    @property
+    def size_in_cells(self):
+        return self._size_in_cells
+
+    @size_in_cells.setter
+    def size_in_cells(self, value):
+        self._size_in_cells = value
+        self.data_dict["size_in_cells"] = value
+        self.place_in_grid()
+
+    # ------------------- Style Management -------------------
+
+    def set_unselected_style(self):
+        """Revert to the default style when the button is deselected."""
+        self._selected = False
+        self.update()  # Trigger repaint
 
     def set_selected_style(self):
-        self.setStyleSheet("""
-            QPushButton {
-                background-color: #f9aa26;
-                color: #000;
-                border: 2px solid #fff;
-            }
-            QPushButton:hover {
-                background-color: #f9aa26;
-            }
-        """)
+        """Set the style for when the button is selected."""
+        self._selected = True
+        self.update()  # Trigger repaint 
 
-    def set_default_style(self):
-        self.setStyleSheet(self.default_style())
+    # ------------------- Grid Placement -------------------
 
     def place_in_grid(self):
-        self.grid_widget.ensure_point_in_bounds(self.grid_x, self.grid_y)
-        px, py = self.grid_widget.grid_to_pixel(self.grid_x, self.grid_y)
-        w = self.width_in_cells * self.grid_widget.cell_size
-        h = self.height_in_cells * self.grid_widget.cell_size
+        """Place the button in the grid based on grid_pos and size_in_cells."""
+        grid_x, grid_y = self.grid_pos
+        self.grid_widget.ensure_point_in_bounds(grid_x, grid_y)
+        px, py = self.grid_widget.grid_to_pixel(grid_x, grid_y)
+        w = self.size_in_cells[0] * self.grid_widget.cell_size
+        h = self.size_in_cells[1] * self.grid_widget.cell_size
         self.setGeometry(int(px), int(py), int(w), int(h))
+
+    # ------------------- Hover Event Handlers -------------------
+
+    def enterEvent(self, event):
+        """Handle the mouse entering the widget area."""
+        self._hovered = True
+        self.update()  # Trigger repaint to reflect hover state
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        """Handle the mouse leaving the widget area."""
+        self._hovered = False
+        self.update()  # Trigger repaint to revert hover state
+        super().leaveEvent(event)
+
+    # ------------------- Event Handling -------------------
 
     def mousePressEvent(self, event):
         if event.button() == QtCore.Qt.LeftButton and self.grid_widget.edit_mode:
             self.button_event.emit("selected", self)
-
             self._dragging = False  # Reset dragging flag
             self._drag_start_pos = event.pos()
         super().mousePressEvent(event)
@@ -90,8 +168,7 @@ class PickerButton(QtWidgets.QPushButton):
                 gx, gy = self.grid_widget.pixel_to_grid(new_pos.x(), new_pos.y())
                 gx, gy = round(gx), round(gy)
 
-                self.grid_x = gx
-                self.grid_y = gy
+                self.grid_pos = (gx, gy)
                 self.place_in_grid()
 
                 # Emit “moved” event
@@ -103,7 +180,7 @@ class PickerButton(QtWidgets.QPushButton):
         if event.button() == QtCore.Qt.LeftButton and self.grid_widget.edit_mode:
             if self._dragging:
                 # Emit 'moved' event after drag release
-                print(f"[PickerButton] Emitting 'moved' for '{self.text()}' to ({self.grid_x}, {self.grid_y})")
+                print(f"[PickerButton] Emitting 'moved' for '{self.text()}' to ({self.grid_pos[0]}, {self.grid_pos[1]})")
                 self.button_event.emit("moved", self)
             else:
                 # Emit 'selected' event
@@ -116,24 +193,109 @@ class PickerButton(QtWidgets.QPushButton):
 
         super().mouseReleaseEvent(event)
 
+    # ------------------- Custom Painting -------------------
+
+    def paintEvent(self, event):
+        """Override QPushButton's paint event for custom shapes"""
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+
+        # Determine colors based on selection state
+        if self._selected:
+            brush_color = self.color # Selected background color
+            pen_color = "#ffffff"    # Selected border color
+            pen_width = 2            # Selected border width
+        elif self._hovered:
+            # Define hover styles
+            brush_color = self.color # Hover background color
+            pen_color = "#ffffff"    # Hover border color
+            pen_width = 2            # Hover border width
+        else:
+            brush_color = self.color # Unselected background color
+            pen_color = "#000000"    # Unselected border color
+            pen_width = 1            # Unselected border width
+
+        # Set up the brush and pen
+        brush = QtGui.QBrush(QtGui.QColor(brush_color))
+        pen = QtGui.QPen(QtGui.QColor(pen_color))
+        pen.setWidth(pen_width)
+
+        painter.setBrush(brush)
+        painter.setPen(pen)
+
+        # Draw the appropriate shape
+        shape = self.shape
+        if shape == "rectangle":
+            painter.drawRect(2, 2, self.width()-4, self.height()-4)
+        elif shape == "circle":
+            painter.drawEllipse(2, 2, self.width()-4, self.height()-4)
+        elif shape == "triangle":
+            points = [
+                QtCore.QPoint(self.width()/2, 2),
+                QtCore.QPoint(2, self.height()-2),
+                QtCore.QPoint(self.width()-2, self.height()-2)
+            ]
+            painter.drawPolygon(QtGui.QPolygon(points))
+        else:
+            # Fallback to rectangle if unknown shape
+            painter.drawRect(2, 2, self.width()-4, self.height()-4)
+
+        # Draw the button text
+        # Adjust text color based on background for visibility
+        bg_color = QtGui.QColor(self.color)
+        brightness = bg_color.red() * 0.299 + bg_color.green() * 0.587 + bg_color.blue() * 0.114
+        text_color = "#000000" if brightness > 186 else "#FFFFFF"
+
+        painter.setPen(QtGui.QColor(text_color))
+        painter.drawText(self.rect(), QtCore.Qt.AlignCenter, self.data_dict["label"])
+
+    def _lighten_color(self, color, factor=0.2):
+        """
+        Lighten the given color by the specified factor.
+
+        :param color: Hex color string (e.g., "#A6A6A6")
+        :param factor: Float representing the lightening factor (0 < factor < 1)
+        :return: Hex color string of the lightened color
+        """
+        color = QtGui.QColor(color)
+        r = min(int(color.red() + (255 - color.red()) * factor), 255)
+        g = min(int(color.green() + (255 - color.green()) * factor), 255)
+        b = min(int(color.blue() + (255 - color.blue()) * factor), 255)
+        return f"#{r:02x}{g:02x}{b:02x}"
+    
+    # ------------------- Command Execution -------------------
+
+    def execute_command(self):
+        """Execute the stored command based on command_mode."""
+        mode = self.command_mode
+        command = self.command_string
+        if mode == "python":
+            try:
+                exec(command, {}, {})
+            except Exception as e:
+                print(f"Error executing Python command: {e}")
+        elif mode == "select":
+            # Assuming the command_string is a comma-separated list of object names
+            objects = [obj.strip() for obj in command.split(",") if obj.strip()]
+            if objects:
+                import maya.cmds as cmds
+                cmds.select(objects)
+        else:
+            print(f"No valid command mode specified for '{self.data_dict['label']}'.")
+
 
 def create_picker_button(grid_widget, data_dict):
     """
     Actually create and place a new PickerButton in the given GridWidget.
     """
-    label = data_dict["label"]
+    btn = PickerButton(data_dict=data_dict, grid_widget=grid_widget)
+    
+    # Set grid_pos and size_in_cells using the property setters
     gx, gy = data_dict["grid_pos"]
     w, h = data_dict["size_in_cells"]
-
-    btn = PickerButton(label, grid_widget)
-    btn.grid_x = gx
-    btn.grid_y = gy
-    btn.width_in_cells, btn.height_in_cells = w, h
-
-    # Additional data? e.g. shape, color, command, etc.
-    # btn.shape = data_dict.get("shape", "rectangle")
-    # btn.color = data_dict.get("color", "#ffffff")
-
+    btn.grid_pos = (gx, gy)
+    btn.size_in_cells = (w, h)
+    
     # Place & show
     btn.place_in_grid()
     btn.show()
