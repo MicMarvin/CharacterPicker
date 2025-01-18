@@ -339,12 +339,10 @@ class EditBox(QtWidgets.QGroupBox):
         grid_pos_layout = QtWidgets.QHBoxLayout()
         self.picker_grid_x = QtWidgets.QSpinBox()
         self.picker_grid_x.setRange(-9999, 9999)
-        self.picker_grid_x.setValue(0)
         grid_pos_layout.addWidget(self.picker_grid_x)
 
         self.picker_grid_y = QtWidgets.QSpinBox()
         self.picker_grid_y.setRange(-9999, 9999)
-        self.picker_grid_y.setValue(0)
         grid_pos_layout.addWidget(self.picker_grid_y)
         picker_layout.addRow("Grid Pos (x, y):", grid_pos_layout)
 
@@ -368,18 +366,17 @@ class EditBox(QtWidgets.QGroupBox):
         self.color_button = QtWidgets.QPushButton()
         self.color_button.setText("Select Color")
         self.color_button.clicked.connect(self.open_color_dialog)
-        self.selected_color = "#A6A6A6"  # Default color
-        self.color_button.setStyleSheet(f"background-color: {self.selected_color}")
         picker_layout.addRow("Color:", self.color_button)
 
         # Command Mode
+        self.last_command_mode = "python"
         self.command_mode_combo_box = QtWidgets.QComboBox()
-        self.command_mode_combo_box.addItems(["none", "python", "select"])
+        self.command_mode_combo_box.addItems(["python", "select"])
+        self.command_mode_combo_box.currentIndexChanged.connect(self.on_command_mode_changed)
         picker_layout.addRow("Command Mode:", self.command_mode_combo_box)
 
         # Command String
         self.command_text_edit = QtWidgets.QPlainTextEdit()
-        self.command_text_edit.setPlaceholderText("Enter Python code or object names (comma-separated)")
         picker_layout.addRow("Command:", self.command_text_edit)
 
         # Add and Delete Buttons
@@ -417,55 +414,104 @@ class EditBox(QtWidgets.QGroupBox):
             self.selected_color = color.name()
             self.color_button.setStyleSheet(f"background-color: {self.selected_color}")
 
-    def get_default_picker_data(self):
+    def get_default_picker_data(self, mode=None):
+        if mode == "python":
+            default_command_string = (
+                "import maya.cmds as cmds\n\n"
+                "print(\"Hello World\\n\")"
+            )
+        elif mode == "select":
+            default_command_string = "Enter a comma separated list of controls to select."
+        else:
+            default_command_string = ""
+
         return {
             "label": " ",
             "grid_pos": (0, 0),
             "size_in_cells": (1, 1),
             "shape": "rectangle",
             "color": "#A6A6A6",
-            "command_mode": "select",
-            "command_string": ""
+            "command_mode": mode,
+            "command_string": default_command_string
         }
     
-    def handle_submit_clicked(self):
+    def handle_submit_clicked(self, external_grid_pos=None):
         """
-        Called when the user clicks the 'Submit' button in the Picker Button section.
-        Gathers form data into a dict, calls main_window.submit_picker.
+        Called when the user clicks the 'Submit' button in the Picker Button section
+        OR when handle_menu_add_button() in the main_window passes an external grid position.
+        Gathers form data into a dict, then calls main_window.submit_picker.
         """
-        data_dict = self.get_default_picker_data()
-
+        command_mode = self.command_mode_combo_box.currentText()
+        data_dict = self.get_default_picker_data(mode=command_mode)
+        
+        # Label
         label = self.picker_label_input.text()
         data_dict["label"] = label
 
+        # Grid Position (from spinboxes)
         gx = int(self.picker_grid_x.value())
         gy = int(self.picker_grid_y.value())
         data_dict["grid_pos"] = (gx, gy)
 
+        # Size
         w = int(self.picker_width.value())
         h = int(self.picker_height.value())
         data_dict["size_in_cells"] = (w, h)
 
-        # Shape Selection
+        # Shape
         shape = self.shape_combo_box.currentText()
         data_dict["shape"] = shape
 
-        # Color Selection
+        # Color
         data_dict["color"] = self.selected_color
 
-        # Command Mode and String
+        # Command Mode
         command_mode = self.command_mode_combo_box.currentText()
         data_dict["command_mode"] = command_mode
 
+        # Command String
         command_string = self.command_text_edit.toPlainText().strip()
         data_dict["command_string"] = command_string
 
+        # -----------------------------------------
+        # OVERRIDE GRID POSITION IF PROVIDED EXTERNALLY
+        # -----------------------------------------
+        # --- Now do a robust check before overriding ---
+        if isinstance(external_grid_pos, tuple):
+            # external_grid_pos is a valid (gx, gy) coordinate
+            data_dict["grid_pos"] = external_grid_pos
+        else:
+            if external_grid_pos is not None:
+                # Print a warning if external_grid_pos is something other than None or tuple
+                print(f"[WARNING] external_grid_pos is not a tuple (type: {type(external_grid_pos)}) => ignoring override")
+
+        # Submit
         self.main_window.submit_picker(data_dict)
 
     def handle_delete_clicked(self):
         """Handle Delete button clicks."""
         # Emit a signal to delete the selected picker button
         self.main_window.delete_selected_picker_button()
+
+    def on_command_mode_changed(self, index):
+        new_mode = self.command_mode_combo_box.currentText()
+
+        # 1) Retrieve old snippet from old mode
+        old_data = self.get_default_picker_data(mode=self.last_command_mode)
+        old_snippet = old_data["command_string"]
+
+        # 2) Check what’s currently in the text edit
+        existing_text = self.command_text_edit.toPlainText().strip()
+
+        # 3) If user hasn't typed anything new (it's empty or matches old snippet),
+        #    then overwrite with new snippet
+        if not existing_text or existing_text == old_snippet:
+            new_data = self.get_default_picker_data(mode=new_mode)
+            new_snippet = new_data["command_string"]
+            self.command_text_edit.setPlainText(new_snippet)
+
+        # 4) Update last_command_mode
+        self.last_command_mode = new_mode
 
     def update_picker_button_fields(self, picker_button):
         """
@@ -475,7 +521,8 @@ class EditBox(QtWidgets.QGroupBox):
         """
         if picker_button is None:
             # Populate with default values
-            data = self.get_default_picker_data()
+            command_mode = self.command_mode_combo_box.currentText()
+            data = self.get_default_picker_data(mode=command_mode)
 
             self.picker_label_input.setText(data["label"])
             self.picker_grid_x.setValue(data["grid_pos"][0])

@@ -6,6 +6,8 @@ class ContextMenu(QtWidgets.QMenu):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.parent_window = parent  # Reference to the main window
+        self.selected_button = None
+        self.grid_pos = None
 
         # Define all possible actions
         self.change_background_action = QtWidgets.QAction("Change Background", self)

@@ -91,6 +91,7 @@ class CharacterPicker(QtWidgets.QMainWindow):
         # Connect signals
         self.connect_signals()
 
+
     @property
     def edit_mode(self):
         return self._edit_mode
@@ -265,13 +266,20 @@ class CharacterPicker(QtWidgets.QMainWindow):
 
     def handle_menu_add_button(self, checked=False):
         """
-        Called when the user picks "Add Button" from the menu action.
-        Always create a new picker button by deselecting any currently selected button first.
+        Called by menubar or context menu to add a button.
+        We always deselect the current button, then either place a new one at the context 
+        menu's grid position or use the Toolbox spinbox if grid_pos is None.
         """
-        # Force deselection
+        # 1) Force deselection
         self.set_selected_picker_button(None)
-        # Then call the same method the ToolBox uses
-        self.edit_box.handle_submit_clicked()
+
+        # 2) Read & reset the context menu pos
+        grid_pos = getattr(self.context_menu, "grid_pos", None)
+        self.context_menu.grid_pos = None  # Reset for next time
+
+        # 3) Call the Toolbox submission with optional override
+        self.edit_box.handle_submit_clicked(external_grid_pos=grid_pos)
+
 
     def rename_current_character(self):
         """Logic to rename the selected tab."""
@@ -504,7 +512,7 @@ class CharacterPicker(QtWidgets.QMainWindow):
             self.edit_box.update_picker_button_fields(btn)
             btn.set_selected_style()
 
-    def delete_selected_picker_button(self, btn=None):
+    def delete_selected_picker_button(self, btn=None, *args):
         """
         Remove the currently selected button from the grid and from the UI,
         or remove the specific 'btn' if provided.
@@ -513,17 +521,19 @@ class CharacterPicker(QtWidgets.QMainWindow):
         if btn is None:
             btn = self.selected_picker_button
 
-        # If we still have no button, show a warning
+        print(f"Attempting to delete picker button: {btn.text() if btn else 'None'}")
+
+        # If no button is selected, show a warning
         if not btn:
             QtWidgets.QMessageBox.warning(self, "Warning", "No button selected (or provided).")
             return
 
-        # If btn is actually the currently selected button, deselect it
+        # Deselect the button if it's the currently selected one
         if btn == self.selected_picker_button:
             self.selected_picker_button = None
-            self.edit_box.update_picker_button_fields(None)
+            self.edit_box.update_picker_button_fields(None)  # Clear ToolBox fields
 
-        # Remove from the parent
+        # Remove the button from the UI
         btn.setParent(None)
         btn.deleteLater()
 
@@ -548,8 +558,9 @@ class CharacterPicker(QtWidgets.QMainWindow):
             print(f"[CharacterPicker] Received event '{event_type}' from button '{btn.text()}'")
         elif event_type == "run_command":
             # The user clicked the button in Animate Mode
+            if not self._edit_mode:
+                btn.execute_command()
             print(f"Executing command for {btn.text()}")
-            # Possibly call btn.execute_command()
         else:
             print(f"Unknown picker event: {event_type} for button {btn.text() if btn else 'None'}")
 
@@ -642,5 +653,3 @@ class CharacterPicker(QtWidgets.QMainWindow):
         """Placeholder method for loading a character."""
         # Implement loading logic here
         QtWidgets.QMessageBox.information(self, "Load Character", "Character loaded successfully.")
-
-

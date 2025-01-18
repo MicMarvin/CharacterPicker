@@ -277,19 +277,23 @@ class GridWidget(QtWidgets.QWidget):
                 # Deselect in the main window
                 top_level = self.window()
                 if hasattr(top_level, "on_picker_button_event"):
-                    top_level.on_picker_button_event("deselect", None)
-
+                    top_level.on_picker_button_event("deselect", None)      
         elif event.button() == QtCore.Qt.RightButton:
-            # Check if a picker button is under the cursor
             child = self.childAt(event.pos())
             selected_button = child if isinstance(child, picker.PickerButton) else None
 
             if selected_button:
                 self.context_menu.selected_button = selected_button
                 self.context_menu.set_context_type('button')
+                self.context_menu.grid_pos = None
             else:
                 self.context_menu.selected_button = None
                 self.context_menu.set_context_type('grid')
+
+                # Get the grid coordinates of the right-clicked spot
+                gx, gy = self.pixel_to_grid(event.pos().x(), event.pos().y())
+                # Store that grid position in the context menu
+                self.context_menu.grid_pos = (round(gx), round(gy))
 
             self.context_menu.exec_(event.globalPos())
         else:
