@@ -17,8 +17,8 @@ class GridWidget(QtWidgets.QWidget):
     MAX_CELL_SIZE = 100
 
     # Define a signal to emit picker button events
-    picker_event = QtCore.Signal(str, object)  # (event_type, PickerButton)
-
+    picker_event = QtCore.Signal(str, object, bool)  # (event_type, PickerButton, shift_pressed)
+    
     def __init__(self, rows=None, cols=None, parent=None):
         super().__init__(parent)
 
@@ -274,10 +274,10 @@ class GridWidget(QtWidgets.QWidget):
             child = self.childAt(event.pos())
             # If child is None or not a PickerButton, deselect
             if not child or not isinstance(child, picker.PickerButton):
-                # Deselect in the main window
+                # Clear selection for all buttons
                 top_level = self.window()
-                if hasattr(top_level, "on_picker_button_event"):
-                    top_level.on_picker_button_event("deselect", None)      
+                if hasattr(top_level, "clear_multi_select"):
+                    top_level.clear_multi_select()  
         elif event.button() == QtCore.Qt.RightButton:
             child = self.childAt(event.pos())
             selected_button = child if isinstance(child, picker.PickerButton) else None
@@ -432,7 +432,7 @@ class GridWidget(QtWidgets.QWidget):
         gy = -(py - center_y - self.offset_y) / self.cell_size
         return (gx, gy)
 
-    def handle_picker_button_event(self, event_type, btn):
+    def handle_picker_button_event(self, event_type, btn, shift_pressed=False):
         """
         Handle different types of button events and forward them: 'selected', 'run_command', 'moved', 'deselect'.
         """
@@ -441,6 +441,6 @@ class GridWidget(QtWidgets.QWidget):
         else:
             btn_label = 'None'
 
-        print(f"[GridWidget] Received event '{event_type}' from button '{btn_label}'")
-        # Emit the event upwards
-        self.picker_event.emit(event_type, btn)
+        print(f"[GridWidget] Received event '{event_type}' from button '{btn_label}', shift={shift_pressed}")
+        # Forward the event upwards with the shift boolean
+        self.picker_event.emit(event_type, btn, shift_pressed)

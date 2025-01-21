@@ -82,7 +82,7 @@ class CharacterPicker(QtWidgets.QMainWindow):
         self.edit_mode = True
 
         # Initialize selected button
-        self.selected_picker_button = None
+        self.selected_picker_buttons = []
 
         # Manually force the UI to reflect the tab and page default name
         current_index = self.tab_manager.currentIndex()
@@ -90,6 +90,9 @@ class CharacterPicker(QtWidgets.QMainWindow):
 
         # Connect signals
         self.connect_signals()
+
+        # Populate default values when the UI is first loaded
+        #self.update_toolbox_display() 
 
 
     @property
@@ -163,12 +166,6 @@ class CharacterPicker(QtWidgets.QMainWindow):
                 print(f"Action {action_name} does not exist.")
 
     def connect_signals(self):
-        """Connect signals between components."""
-        current_grid = self.tab_manager.get_current_grid_widget()
-        if current_grid:
-            current_grid.picker_event.connect(self.on_picker_button_event)
-            self._connected_grid = current_grid
-
         # Connect EditBox signals to appropriate methods
         self.edit_box.add_character_button.clicked.connect(self.handle_add_character)
         self.edit_box.save_character_button.clicked.connect(self.handle_save_character)
@@ -271,7 +268,7 @@ class CharacterPicker(QtWidgets.QMainWindow):
         menu's grid position or use the Toolbox spinbox if grid_pos is None.
         """
         # 1) Force deselection
-        self.set_selected_picker_button(None)
+        self.clear_multi_select()
 
         # 2) Read & reset the context menu pos
         grid_pos = getattr(self.context_menu, "grid_pos", None)
@@ -439,14 +436,28 @@ class CharacterPicker(QtWidgets.QMainWindow):
         """
         Called when user clicks the 'Submit' button in the ToolBox (or triggers from a menu).
         If no button is selected, create a new picker button.
-        If a button is selected, update the existing one.
+        If exactly one button is selected, update that one.
+        If multiple are selected, you can decide how to handle:
+        - Possibly just update the *last* one in self.selected_picker_buttons
+        - Or do nothing / show a warning
         """
-        if self.selected_picker_button is None:
+        num_selected = len(self.selected_picker_buttons)
+
+        if num_selected == 0:
             # Create a new picker button
             self._create_picker_button(data_dict)
+        elif num_selected == 1:
+            # Update the single selected button
+            btn = self.selected_picker_buttons[0]
+            self._update_picker_button(btn, data_dict)
         else:
-            # Update the currently selected picker button
-            self._update_picker_button(self.selected_picker_button, data_dict)
+            # Multiple selected
+            # 1) You can pick the last one:
+            #    btn = self.selected_picker_buttons[-1]
+            #    self._update_picker_button(btn, data_dict)
+            # OR 2) do nothing:
+            print("Multiple buttons selected, not sure which one to update. Doing nothing.")
+
 
     def _create_picker_button(self, data_dict):
         """
@@ -459,7 +470,7 @@ class CharacterPicker(QtWidgets.QMainWindow):
 
         # Actually create it
         new_btn = picker.create_picker_button(current_grid, data_dict)
-        self.set_selected_picker_button(new_btn)
+        self.add_button_to_multi_select(new_btn, shift_pressed=False)
 
     def _update_picker_button(self, btn, data_dict):
         """
@@ -494,73 +505,132 @@ class CharacterPicker(QtWidgets.QMainWindow):
         # Optionally, update the EditBox fields
         self.edit_box.update_picker_button_fields(btn)
 
-    def set_selected_picker_button(self, btn):
+    def add_button_to_multi_select(self, btn, shift_pressed):
         """
-        Select or deselect a picker button.
+        SHIFT + left-click => add to existing selection
+        No SHIFT => single selection (clear others first).
         """
-        # Deselect previously selected button
-        if self.selected_picker_button and self.selected_picker_button != btn:
-            self.selected_picker_button.set_unselected_style()
+        # If SHIFT not pressed => clear old selection
+        if not shift_pressed:
+            self.clear_multi_select()  # We'll define this too
 
-        self.selected_picker_button = btn
-
-        if btn is None:
-            # Deselect: clear fields and reset UI
-            self.edit_box.update_picker_button_fields(None)
+        # If button already in the list, do nothing or remove it (your preference).
+        if btn in self.selected_picker_buttons:
+            # Toggle off? or do nothing. Let's toggle off:
+            self.selected_picker_buttons.remove(btn)
+            btn.set_unselected_style()
+            if btn.command_mode == "select":
+                btn.deselect_objects()
+            print(f"{btn.text()} was toggled off.")
         else:
-            # Select: populate fields with button's data
-            self.edit_box.update_picker_button_fields(btn)
+            self.selected_picker_buttons.append(btn)
             btn.set_selected_style()
+            print(f"{btn.text()} toggled ON")
+
+        self.update_toolbox_display()
+
+    def remove_button_from_multi_select(self, btn):
+        """
+        Called when event_type == 'deselect' or the user re-clicks the same button, etc.
+        """
+        if btn in self.selected_picker_buttons:
+            self.selected_picker_buttons.remove(btn)
+            btn.set_unselected_style()
+            if btn.command_mode == "select":
+                btn.deselect_objects()
+            print(f"{btn.text()} forcibly removed from selection.")
+        self.update_toolbox_display()
+
+    def clear_multi_select(self):
+        """
+        Deselect all selected picker buttons.
+        """
+        for b in self.selected_picker_buttons[:]:
+            b.set_unselected_style()
+            if b.command_mode == "select":
+                b.deselect_objects()
+        self.selected_picker_buttons.clear()
+        self.update_toolbox_display()
+
+    def update_toolbox_display(self):
+        """
+        If exactly one button is selected, show its data in the EditBox.
+        If zero or multiple, show None (defaults).
+        """
+        num_selected = len(self.selected_picker_buttons)
+        if num_selected == 1:
+            btn = self.selected_picker_buttons[0]
+            self.edit_box.update_picker_button_fields(btn)
+        else:
+            # Show defaults
+            self.edit_box.update_picker_button_fields(None)
 
     def delete_selected_picker_button(self, btn=None, *args):
         """
-        Remove the currently selected button from the grid and from the UI,
-        or remove the specific 'btn' if provided.
+        Remove the specified 'btn'. If no btn is given,
+        we'll remove the *last* selected button if exactly one is selected.
         """
-        # If btn is not passed, use the selected_picker_button
+        # 1) If no btn is passed, see if we have a single or multiple
         if btn is None:
-            btn = self.selected_picker_button
+            if not self.selected_picker_buttons:
+                QtWidgets.QMessageBox.warning(self, "Warning", "No button is currently selected.")
+                return
+            elif len(self.selected_picker_buttons) > 1:
+                QtWidgets.QMessageBox.warning(self, "Warning", "Multiple buttons are selected. Specify which one to delete.")
+                return
+            else:
+                # Exactly one
+                btn = self.selected_picker_buttons[0]
 
         print(f"Attempting to delete picker button: {btn.text() if btn else 'None'}")
 
-        # If no button is selected, show a warning
         if not btn:
             QtWidgets.QMessageBox.warning(self, "Warning", "No button selected (or provided).")
             return
 
-        # Deselect the button if it's the currently selected one
-        if btn == self.selected_picker_button:
-            self.selected_picker_button = None
-            self.edit_box.update_picker_button_fields(None)  # Clear ToolBox fields
+        # 2) Remove from our multi-select list if present
+        if btn in self.selected_picker_buttons:
+            self.selected_picker_buttons.remove(btn)
 
-        # Remove the button from the UI
+        # Clear the Toolbox display if you want 
+        self.update_toolbox_display()
+
+        # 3) Remove the button from the UI
         btn.setParent(None)
         btn.deleteLater()
 
         print(f"Picker button '{btn.text()}' deleted successfully.")
 
-    def on_picker_button_event(self, event_type, btn):
+
+    def on_picker_button_event(self, event_type, btn, shift_pressed=False):
         """
         A central place for 'selected', 'deselect', 'moved', 'run_command', etc.
         This method can be triggered from tab_manager or grid_widget
         when a button_event is emitted.
         """
         if event_type == "selected":
-            self.set_selected_picker_button(btn)
+            if self.edit_mode:
+                self.clear_multi_select()  # Force single selection in Edit Mode
+                self.selected_picker_buttons.append(btn)
+                btn.set_selected_style()
+                self.update_toolbox_display()
+            self.add_button_to_multi_select(btn, shift_pressed=False)
             print(f"[CharacterPicker] Received event '{event_type}' from button '{btn.text()}'")
         elif event_type == "deselect":
-            self.set_selected_picker_button(None)
-            print(f"[CharacterPicker] Received event '{event_type}'")
+            # Toggle off if SHIFT not pressed, or forcibly remove from selection
+            self.remove_button_from_multi_select(btn)
         elif event_type == "moved":
             # Maybe update some fields in the EditBox if this is the selected button
-            if self.selected_picker_button == btn:
-                self.edit_box.update_picker_button_fields(btn)
+            if btn in self.selected_picker_buttons:
+                self.update_toolbox_display()
             print(f"[CharacterPicker] Received event '{event_type}' from button '{btn.text()}'")
         elif event_type == "run_command":
-            # The user clicked the button in Animate Mode
-            if not self._edit_mode:
-                btn.execute_command()
+            # The user clicked the button in Animate Mode          
+            if btn.command_mode == "select":
+                # So we can track it for toggling later
+                self.add_button_to_multi_select(btn, shift_pressed)           
             print(f"Executing command for {btn.text()}")
+            btn.execute_command()  
         else:
             print(f"Unknown picker event: {event_type} for button {btn.text() if btn else 'None'}")
 
@@ -571,7 +641,7 @@ class CharacterPicker(QtWidgets.QMainWindow):
         then set the EditBox fields to match the new tab/page.
         """
         # 1) Deselect any picker button
-        self.set_selected_picker_button(None)
+        self.clear_multi_select()
 
         # 2) Pull the character name from the tab and show it in edit_box.character_name_input
         tab_name = self.tab_manager.tabText(index)  # e.g. "Character 1"
@@ -625,20 +695,36 @@ class CharacterPicker(QtWidgets.QMainWindow):
 
     def _reconnect_grid_signals(self):
         """
-        Consolidate your connect/disconnect logic here,
-        so both on_tab_changed and on_page_changed can call it.
+        Reconnects picker_event from the newly detected GridWidget
+        while avoiding duplicate connections.
         """
         new_grid = self.tab_manager.get_current_grid_widget()
-        if self._connected_grid and self._connected_grid != new_grid:
+
+        # Debug line helps verify the references:
+        print(f"_reconnect_grid_signals: old_grid={self._connected_grid}, new_grid={new_grid}")
+
+        # 1) If the new_grid is exactly the same widget instance, do nothing
+        if new_grid is self._connected_grid:
+            print("No change in grid. Skipping reconnection.")
+            return
+
+        # 2) If we had an old grid, disconnect it
+        if self._connected_grid:
+            print(f"Disconnecting signals from old grid: {self._connected_grid}")
             try:
                 self._connected_grid.picker_event.disconnect(self.on_picker_button_event)
             except (TypeError, RuntimeError):
                 pass
             self._connected_grid = None
 
-        if new_grid and new_grid != self._connected_grid:
+        # 3) Now if we have a valid new grid, connect it
+        if new_grid:
+            print(f"Connecting signals to new grid: {new_grid}")
             new_grid.picker_event.connect(self.on_picker_button_event)
-            self._connected_grid = new_grid
+
+        # 4) Update our reference
+        self._connected_grid = new_grid
+
 
     def show_about_dialog(self):
         """Show the About dialog."""

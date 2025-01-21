@@ -8,7 +8,7 @@ class PickerButton(QtWidgets.QPushButton):
     A button that knows its grid-based size and position.
     Unified event handling using button_event signal.
     """
-    button_event = QtCore.Signal(str, object)  # (event_type, self)
+    button_event = QtCore.Signal(str, object, bool)  # (event_type, self, shift_pressed)
 
     # Define a drag threshold (in pixels)
     DRAG_THRESHOLD = 15
@@ -144,14 +144,22 @@ class PickerButton(QtWidgets.QPushButton):
     # ------------------- Event Handling -------------------
 
     def mousePressEvent(self, event):
-        if event.button() == QtCore.Qt.LeftButton and self.grid_widget.edit_mode:
-            self.button_event.emit("selected", self)
-            self._dragging = False  # Reset dragging flag
-            self._drag_start_pos = event.pos()
+        if event.button() == QtCore.Qt.LeftButton:
+            if self.grid_widget.edit_mode:
+                # EDIT MODE BEHAVIOR (move, select)
+                shift_pressed = bool(event.modifiers() & QtCore.Qt.ShiftModifier)
+                self.button_event.emit("selected", self, shift_pressed)
+                self._dragging = False  # Reset dragging flag
+                self._drag_start_pos = event.pos()
+            else:
+                pass
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
         if self.grid_widget.edit_mode and self._drag_start_pos:
+            
+            shift_pressed = bool(event.modifiers() & QtCore.Qt.ShiftModifier)
+            
             # Calculate the distance moved from the initial press
             delta = event.pos() - self._drag_start_pos
             distance = math.hypot(delta.x(), delta.y())
@@ -172,24 +180,38 @@ class PickerButton(QtWidgets.QPushButton):
                 self.place_in_grid()
 
                 # Emit “moved” event
-                self.button_event.emit("moved", self)
+                self.button_event.emit("moved", self, shift_pressed)
 
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
-        if event.button() == QtCore.Qt.LeftButton and self.grid_widget.edit_mode:
-            if self._dragging:
-                # Emit 'moved' event after drag release
-                print(f"[PickerButton] Emitting 'moved' for '{self.text()}' to ({self.grid_pos[0]}, {self.grid_pos[1]})")
-                self.button_event.emit("moved", self)
+        if event.button() == QtCore.Qt.LeftButton:
+            shift_pressed = bool(event.modifiers() & QtCore.Qt.ShiftModifier)
+            if self.grid_widget.edit_mode:
+                # EDIT MODE BEHAVIOR (move, select)
+                if self._dragging:
+                    # Emit 'moved' event after drag release
+                    print(f"[PickerButton] Emitting 'moved' for '{self.text()}' to ({self.grid_pos[0]}, {self.grid_pos[1]})")
+                    self.button_event.emit("moved", self, shift_pressed)
+                else:
+                    # Emit 'selected' event
+                    print(f"[PickerButton] Emitting 'selected' for '{self.text()}'")
+                    self.button_event.emit("selected", self, shift_pressed)
             else:
-                # Emit 'selected' event
-                print(f"[PickerButton] Emitting 'selected' for '{self.text()}'")
-                self.button_event.emit("selected", self)
+                # ANIMATE MODE BEHAVIOR (run_command)
+                if self._selected and self.command_mode == "select":
+                    if shift_pressed:
+                        # If it’s already selected and SHIFT is NOT pressed => “deselect”
+                        self.button_event.emit("deselect", self, shift_pressed)
+                    else:
+                        self.button_event.emit("run_command", self, shift_pressed)
+                else:
+                    # Otherwise, run the command (select objects or code)
+                    self.button_event.emit("run_command", self, shift_pressed)
 
-            # Reset dragging flags
-            self._dragging = False
-            self._drag_start_pos = None
+        # Reset dragging flags
+        self._dragging = False
+        self._drag_start_pos = None
 
         super().mouseReleaseEvent(event)
 
@@ -272,16 +294,44 @@ class PickerButton(QtWidgets.QPushButton):
         if mode == "python":
             try:
                 exec(command, {}, {})
+                print(f"Running Python command: {command}")
             except Exception as e:
                 print(f"Error executing Python command: {e}")
         elif mode == "select":
-            # Assuming the command_string is a comma-separated list of object names
-            objects = [obj.strip() for obj in command.split(",") if obj.strip()]
-            if objects:
-                import maya.cmds as cmds
-                cmds.select(objects)
+            self._select_objects()
         else:
             print(f"No valid command mode specified for '{self.data_dict['label']}'.")
+
+    def _select_objects(self):
+        """Select (and track) objects for this button in Animate Mode."""
+        import maya.cmds as cmds
+        # Parse the user’s comma-separated list
+        objects = [obj.strip() for obj in self.command_string.split(",") if obj.strip()]
+       
+        if not objects:
+            print(f"No objects to select for '{self._label}'")
+            return
+
+        # Perform the selection
+        cmds.select(objects, add=True)  # or add=True if you want multi-selection
+
+        # Store the objects we just selected, so we can deselect them later
+        self._selected_objects = objects
+
+        # Mark the button as "selected" visually
+        self.set_selected_style()
+
+        print(f"Running Select command: {objects}")
+
+    def deselect_objects(self):
+        """Deselect the objects this button had selected, if any."""
+        if hasattr(self, "_selected_objects"):
+            import maya.cmds as cmds
+            try:
+                cmds.select(self._selected_objects, deselect=True)
+            except Exception as e:
+                print(f"Error deselecting objects: {e}")
+            self._selected_objects = []
 
 
 def create_picker_button(grid_widget, data_dict):

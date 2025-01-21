@@ -401,8 +401,9 @@ class EditBox(QtWidgets.QGroupBox):
         # You need a reference to the *currently selected* picker button
         # Typically, your main_window or tab_manager has something like self.selected_picker_button
         main_window = self.window()
-        if hasattr(main_window, "selected_picker_button") and main_window.selected_picker_button:
-            main_window.selected_picker_button.setText(new_label)
+        if hasattr(main_window, "selected_picker_buttons") and main_window.selected_picker_buttons:
+            btn = main_window.selected_picker_buttons[0]
+            btn.setText(new_label)
 
     # ------------------------
     #  Picker Button Logic
@@ -417,8 +418,7 @@ class EditBox(QtWidgets.QGroupBox):
     def get_default_picker_data(self, mode=None):
         if mode == "python":
             default_command_string = (
-                "import maya.cmds as cmds\n\n"
-                "print(\"Hello World\\n\")"
+                "import maya.cmds as cmds\nfrom PySide2 import QtWidgets, QtGui, QtCore\n\nQtWidgets.QMessageBox.information(None, \"Multiple Dialogs\", \"Hello World!\\nThis dialog appears every time the snippet is run.\")\n"
             )
         elif mode == "select":
             default_command_string = "Enter a comma separated list of controls to select."
