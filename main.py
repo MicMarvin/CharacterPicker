@@ -23,12 +23,16 @@ def show_character_picker():
 
     try:
         picker_window = main.CharacterPicker(parent=maya_main_window())
+        picker_window.setObjectName("CharacterPickerWindow")  # Ensure unique name for MEL compatibility
         picker_window.setWindowFlags(QtCore.Qt.Window)
         picker_window.show()
-        print("Character Picker launched successfully.")
+
+        # Store picker window reference globally for MEL/Python commands
+        import sys
+        sys.modules['character_picker_main_window'] = picker_window
+
     except Exception as e:
         print(f"Failed to launch Character Picker: {e}")
-
 
 if __name__ == "__main__":
     show_character_picker()

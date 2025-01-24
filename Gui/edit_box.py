@@ -15,6 +15,7 @@ class EditBox(QtWidgets.QGroupBox):
         self.tab_manager = tab_manager  # Store a reference to the tab_manager
         self.context_menu = context_menu  # Pass the shared context menu
         self.currently_open_section = None  # Track which CollapsibleBox is open
+        self.last_command_mode = "Python"  # Set default to avoid initial undefined behavior
 
         # Main layout for the content
         layout = QtWidgets.QVBoxLayout(self)
@@ -369,9 +370,8 @@ class EditBox(QtWidgets.QGroupBox):
         picker_layout.addRow("Color:", self.color_button)
 
         # Command Mode
-        self.last_command_mode = "python"
         self.command_mode_combo_box = QtWidgets.QComboBox()
-        self.command_mode_combo_box.addItems(["python", "select"])
+        self.command_mode_combo_box.addItems(["Python", "MEL", "Select"])
         self.command_mode_combo_box.currentIndexChanged.connect(self.on_command_mode_changed)
         picker_layout.addRow("Command Mode:", self.command_mode_combo_box)
 
@@ -416,11 +416,18 @@ class EditBox(QtWidgets.QGroupBox):
             self.color_button.setStyleSheet(f"background-color: {self.selected_color}")
 
     def get_default_picker_data(self, mode=None):
-        if mode == "python":
+        if mode == "Python":
             default_command_string = (
-                "import maya.cmds as cmds\nfrom PySide2 import QtWidgets, QtGui, QtCore\n\nQtWidgets.QMessageBox.information(None, \"Multiple Dialogs\", \"Hello World!\\nThis dialog appears every time the snippet is run.\")\n"
+                "QtWidgets.QMessageBox.information(sys.modules['character_picker_main_window'], 'Default Python Code', 'Hooray, it works!\\n\\nThe picker button ran this code.')"
             )
-        elif mode == "select":
+        elif mode == "MEL":
+            default_command_string = (
+                "confirmDialog -title \"Default MEL Code\" "
+                "-message \"Hooray, it works!\\n\\nThe picker button ran this code.\" "
+                "-button \"OK\" "
+                "-parent $pickerWindow;"
+            )
+        elif mode == "Select":
             default_command_string = "Enter a comma separated list of controls to select."
         else:
             default_command_string = ""
@@ -491,7 +498,7 @@ class EditBox(QtWidgets.QGroupBox):
     def handle_delete_clicked(self):
         """Handle Delete button clicks."""
         # Emit a signal to delete the selected picker button
-        self.main_window.delete_selected_picker_button()
+        self.main_window.delete_selected_picker_button
 
     def on_command_mode_changed(self, index):
         new_mode = self.command_mode_combo_box.currentText()

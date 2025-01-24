@@ -1,6 +1,7 @@
 # picker.py
 from PySide2 import QtCore, QtWidgets, QtGui
 import math
+import sys
 
 
 class PickerButton(QtWidgets.QPushButton):
@@ -199,7 +200,7 @@ class PickerButton(QtWidgets.QPushButton):
                     self.button_event.emit("selected", self, shift_pressed)
             else:
                 # ANIMATE MODE BEHAVIOR (run_command)
-                if self._selected and self.command_mode == "select":
+                if self._selected and self.command_mode == "Select":
                     if shift_pressed:
                         # If it’s already selected and SHIFT is NOT pressed => “deselect”
                         self.button_event.emit("deselect", self, shift_pressed)
@@ -291,16 +292,47 @@ class PickerButton(QtWidgets.QPushButton):
         """Execute the stored command based on command_mode."""
         mode = self.command_mode
         command = self.command_string
-        if mode == "python":
-            try:
-                exec(command, {}, {})
-                print(f"Running Python command: {command}")
-            except Exception as e:
-                print(f"Error executing Python command: {e}")
-        elif mode == "select":
-            self._select_objects()
-        else:
-            print(f"No valid command mode specified for '{self.data_dict['label']}'.")
+
+        try:
+            if mode == "Python":
+                exec_globals = {
+                    "sys": sys,
+                    "QtWidgets": __import__("PySide2.QtWidgets").QtWidgets,
+                    "__builtins__": __builtins__
+                }
+                exec(command, exec_globals)
+                print(f"Running Python command:\n{command}")
+
+            elif mode == "MEL":
+                import maya.mel as mel
+
+                # Ensure the picker window is stored globally
+                if "character_picker_main_window" not in sys.modules:
+                    raise ValueError("Picker window not found in sys.modules.")
+
+                picker_window = sys.modules["character_picker_main_window"]
+
+                if not picker_window:
+                    raise ValueError("Picker window reference is None.")
+
+                picker_window_name = picker_window.objectName()
+
+                if not picker_window_name:
+                    raise ValueError("Picker window name is empty or undefined.")
+
+                # Assign picker window name to a global MEL variable
+                mel.eval(f'global string $pickerWindow = "{picker_window_name}";')
+                mel.eval(command)
+                print(f"Running MEL command:\n{command}")
+
+            elif mode == "Select":
+                self._select_objects()
+
+            else:
+                print(f"No valid command mode specified for '{self.data_dict.get('label', 'Unnamed')}'.")
+
+        except Exception as e:
+            print(f"Error executing {mode} command: {e}")
 
     def _select_objects(self):
         """Select (and track) objects for this button in Animate Mode."""

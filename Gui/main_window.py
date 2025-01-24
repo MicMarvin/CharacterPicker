@@ -185,6 +185,11 @@ class CharacterPicker(QtWidgets.QMainWindow):
         self.menu_bar.add_button_action.triggered.connect(self.handle_menu_add_button)
         self.menu_bar.delete_button_action.triggered.connect(self.delete_selected_picker_button)
         self.menu_bar.close_tab_action.triggered.connect(self.remove_current_character)
+
+        self.menu_bar.frame_action.triggered.connect(self.handle_frame_all)
+        self.menu_bar.zoom_in_action.triggered.connect(self.handle_zoom_in)
+        self.menu_bar.zoom_out_action.triggered.connect(self.handle_zoom_out)
+
         self.menu_bar.current_mode_action.triggered.connect(self.toggle_edit_mode)
         self.menu_bar.toolbox_visibility_action.toggled.connect(self.toggle_tool_box)
 
@@ -277,6 +282,24 @@ class CharacterPicker(QtWidgets.QMainWindow):
         # 3) Call the Toolbox submission with optional override
         self.edit_box.handle_submit_clicked(external_grid_pos=grid_pos)
 
+    def handle_frame_all(self):
+        """Called when the menubar's 'Frame All' action is triggered."""
+        current_grid = self.tab_manager.get_current_grid_widget()
+        if not current_grid:
+            print("No valid grid to frame.")
+            return
+        # Call the grid's frame_all method
+        current_grid.frame_all()
+
+    def handle_zoom_in(self):
+        current_grid = self.tab_manager.get_current_grid_widget()
+        if current_grid:
+            current_grid.apply_zoom(+2)  # or +1 for smaller step
+
+    def handle_zoom_out(self):
+        current_grid = self.tab_manager.get_current_grid_widget()
+        if current_grid:
+            current_grid.apply_zoom(-2)
 
     def rename_current_character(self):
         """Logic to rename the selected tab."""
@@ -519,7 +542,7 @@ class CharacterPicker(QtWidgets.QMainWindow):
             # Toggle off? or do nothing. Let's toggle off:
             self.selected_picker_buttons.remove(btn)
             btn.set_unselected_style()
-            if btn.command_mode == "select":
+            if btn.command_mode == "Select":
                 btn.deselect_objects()
             print(f"{btn.text()} was toggled off.")
         else:
@@ -536,7 +559,7 @@ class CharacterPicker(QtWidgets.QMainWindow):
         if btn in self.selected_picker_buttons:
             self.selected_picker_buttons.remove(btn)
             btn.set_unselected_style()
-            if btn.command_mode == "select":
+            if btn.command_mode == "Select":
                 btn.deselect_objects()
             print(f"{btn.text()} forcibly removed from selection.")
         self.update_toolbox_display()
@@ -547,7 +570,7 @@ class CharacterPicker(QtWidgets.QMainWindow):
         """
         for b in self.selected_picker_buttons[:]:
             b.set_unselected_style()
-            if b.command_mode == "select":
+            if b.command_mode == "Select":
                 b.deselect_objects()
         self.selected_picker_buttons.clear()
         self.update_toolbox_display()
@@ -626,7 +649,7 @@ class CharacterPicker(QtWidgets.QMainWindow):
             print(f"[CharacterPicker] Received event '{event_type}' from button '{btn.text()}'")
         elif event_type == "run_command":
             # The user clicked the button in Animate Mode          
-            if btn.command_mode == "select":
+            if btn.command_mode == "Select":
                 # So we can track it for toggling later
                 self.add_button_to_multi_select(btn, shift_pressed)           
             print(f"Executing command for {btn.text()}")
@@ -700,9 +723,6 @@ class CharacterPicker(QtWidgets.QMainWindow):
         """
         new_grid = self.tab_manager.get_current_grid_widget()
 
-        # Debug line helps verify the references:
-        print(f"_reconnect_grid_signals: old_grid={self._connected_grid}, new_grid={new_grid}")
-
         # 1) If the new_grid is exactly the same widget instance, do nothing
         if new_grid is self._connected_grid:
             print("No change in grid. Skipping reconnection.")
@@ -710,7 +730,6 @@ class CharacterPicker(QtWidgets.QMainWindow):
 
         # 2) If we had an old grid, disconnect it
         if self._connected_grid:
-            print(f"Disconnecting signals from old grid: {self._connected_grid}")
             try:
                 self._connected_grid.picker_event.disconnect(self.on_picker_button_event)
             except (TypeError, RuntimeError):
@@ -719,7 +738,6 @@ class CharacterPicker(QtWidgets.QMainWindow):
 
         # 3) Now if we have a valid new grid, connect it
         if new_grid:
-            print(f"Connecting signals to new grid: {new_grid}")
             new_grid.picker_event.connect(self.on_picker_button_event)
 
         # 4) Update our reference

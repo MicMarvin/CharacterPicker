@@ -321,20 +321,19 @@ class GridWidget(QtWidgets.QWidget):
             super().mouseReleaseEvent(event)
 
     def wheelEvent(self, event):
+        """
+        Zoom in/out with mouse wheel. 
+        'delta' is typically 120 per wheel step in many systems,
+        so we pick a step=2 or step=1 to get a nice ratio.
+        """
         delta = event.angleDelta().y()
-        step = 2
+        step = 2  # or 1 if you want smaller increments
+
         if delta > 0:
-            self.cell_size += step
+            self.apply_zoom(step)
         else:
-            self.cell_size -= step
-
-        if self.cell_size < GridWidget.MIN_CELL_SIZE:
-            self.cell_size = GridWidget.MIN_CELL_SIZE
-        elif self.cell_size > GridWidget.MAX_CELL_SIZE:
-            self.cell_size = GridWidget.MAX_CELL_SIZE
-
-        self.reposition_all_buttons()
-        self.update()
+            self.apply_zoom(-step)
+        event.accept()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -372,22 +371,73 @@ class GridWidget(QtWidgets.QWidget):
         self.update()
 
     def frame_all(self):
-        buttons = []
+        # 1) Gather bounding box from all PickerButtons
+        buttons_found = False
+        min_gx = None
+        max_gx = None
+        min_gy = None
+        max_gy = None
+
         for child in self.findChildren(QtWidgets.QPushButton):
-            if hasattr(child, "grid_x") and hasattr(child, "grid_y"):
-                buttons.append(child)
-        if not buttons:
-            return
+            # Instead of checking grid_x, grid_y, check if child is a PickerButton
+            if isinstance(child, picker.PickerButton):
+                gx, gy = child.grid_pos              # e.g. (grid_x, grid_y)
+                w_cells, h_cells = child.size_in_cells  # e.g. (width_in_cells, height_in_cells)
 
-        min_gx = min(b.grid_x for b in buttons)
-        max_gx = max(b.grid_x + (b.width_in_cells - 1) for b in buttons)
-        min_gy = min(b.grid_y for b in buttons)
-        max_gy = max(b.grid_y + (b.height_in_cells - 1) for b in buttons)
+                # bounding box in grid coords for this button
+                b_minx = gx
+                b_maxx = gx + (w_cells - 1)
+                b_miny = gy
+                b_maxy = gy + (h_cells - 1)
 
-        grid_bbox_width = (max_gx - min_gx + 1)
-        grid_bbox_height = (max_gy - min_gy + 1)
+                # merge
+                if min_gx is None or b_minx < min_gx:
+                    min_gx = b_minx
+                if max_gx is None or b_maxx > max_gx:
+                    max_gx = b_maxx
+                if min_gy is None or b_miny < min_gy:
+                    min_gy = b_miny
+                if max_gy is None or b_maxy > max_gy:
+                    max_gy = b_maxy
 
-        if grid_bbox_width <= 0 or grid_bbox_height <= 0:
+                buttons_found = True
+
+        if not buttons_found:
+            # no buttons => define a trivial bounding box so we can still handle the background
+            min_gx, max_gx, min_gy, max_gy = 0, 1, 0, 1
+
+        # 2) Merge with background bounding box if we have a bg_pixmap
+        #    (same logic as before)
+        if self.bg_pixmap:
+            pixmap_w = self.bg_pixmap.width()
+            pixmap_h = self.bg_pixmap.height()
+            factor = self.bg_scale_factor
+            cs = self.cell_size
+
+            current_bg_w_pixels = pixmap_w * factor
+            current_bg_h_pixels = pixmap_h * factor
+
+            bg_w_grid = current_bg_w_pixels / cs
+            bg_h_grid = current_bg_h_pixels / cs
+
+            bg_min_x = self.bg_offset_gx - (bg_w_grid / 2.0)
+            bg_max_x = self.bg_offset_gx + (bg_w_grid / 2.0)
+            bg_min_y = self.bg_offset_gy - (bg_h_grid / 2.0)
+            bg_max_y = self.bg_offset_gy + (bg_h_grid / 2.0)
+
+            if bg_min_x < min_gx:
+                min_gx = bg_min_x
+            if bg_max_x > max_gx:
+                max_gx = bg_max_x
+            if bg_min_y < min_gy:
+                min_gy = bg_min_y
+            if bg_max_y > max_gy:
+                max_gy = bg_max_y
+
+        # 3) Now compute the bounding box size and do the scaling/centering
+        grid_bbox_w = (max_gx - min_gx)
+        grid_bbox_h = (max_gy - min_gy)
+        if grid_bbox_w <= 0 or grid_bbox_h <= 0:
             return
 
         margin_px = 20
@@ -396,15 +446,19 @@ class GridWidget(QtWidgets.QWidget):
         if avail_w <= 0 or avail_h <= 0:
             return
 
-        desired_cell_size_w = avail_w / grid_bbox_width
-        desired_cell_size_h = avail_h / grid_bbox_height
+        desired_cell_size_w = avail_w / grid_bbox_w
+        desired_cell_size_h = avail_h / grid_bbox_h
         new_cell_size = min(desired_cell_size_w, desired_cell_size_h)
+        new_cell_size = max(self.MIN_CELL_SIZE, min(new_cell_size, self.MAX_CELL_SIZE))
 
-        new_cell_size = max(self.min_cell_size, min(new_cell_size, self.max_cell_size))
+        old_cell_size = self.cell_size
+        if old_cell_size > 0:
+            ratio = new_cell_size / old_cell_size
+            self.bg_scale_factor *= ratio
         self.cell_size = new_cell_size
 
-        mid_gx = (min_gx + max_gx + 1) / 2.0
-        mid_gy = (min_gy + max_gy + 1) / 2.0
+        mid_gx = (min_gx + max_gx) / 2.0
+        mid_gy = (min_gy + max_gy) / 2.0
 
         px_mid, py_mid = self.grid_to_pixel(mid_gx, mid_gy)
         desired_cx = self.width() / 2.0
@@ -415,6 +469,28 @@ class GridWidget(QtWidgets.QWidget):
         self.offset_x += shift_x
         self.offset_y += shift_y
 
+        self.reposition_all_buttons()
+        self.update()
+
+    def apply_zoom(self, increment):
+        """
+        Zoom the grid by 'increment' in cell_size.
+        If in animate mode, also scale the background by the same ratio.
+        """
+        old_cell_size = self.cell_size
+
+        new_cell_size = self.cell_size + increment
+        if new_cell_size < self.MIN_CELL_SIZE:
+            new_cell_size = self.MIN_CELL_SIZE
+        elif new_cell_size > self.MAX_CELL_SIZE:
+            new_cell_size = self.MAX_CELL_SIZE
+
+        # If we are in animate mode, scale the background ratio
+        if not self.edit_mode and old_cell_size > 0:
+            ratio = new_cell_size / float(old_cell_size)
+            self.bg_scale_factor *= ratio
+
+        self.cell_size = new_cell_size
         self.reposition_all_buttons()
         self.update()
 

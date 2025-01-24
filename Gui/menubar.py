@@ -1,5 +1,5 @@
 # menubar.py
-from PySide2 import QtWidgets, QtCore
+from PySide2 import QtWidgets, QtCore, QtGui 
 
 
 class MenuBar(QtWidgets.QMenuBar):
@@ -33,17 +33,21 @@ class MenuBar(QtWidgets.QMenuBar):
         # File menu
         file_menu = self.addMenu("File")
         self.add_character_action = QtWidgets.QAction("New...", file_menu)
+        self.add_character_action.setShortcut(QtGui.QKeySequence("Ctrl+N"))
         file_menu.addAction(self.add_character_action)
 
         self.load_character_action = QtWidgets.QAction("Open...", file_menu)
+        self.load_character_action.setShortcut(QtGui.QKeySequence("Ctrl+O"))
         file_menu.addAction(self.load_character_action)
 
         file_menu.addSeparator()
 
         self.save_character_action = QtWidgets.QAction("Save", file_menu)
+        self.save_character_action.setShortcut(QtGui.QKeySequence("Ctrl+S"))
         file_menu.addAction(self.save_character_action)
 
         self.save_as_action = QtWidgets.QAction("Save As...", file_menu)
+        self.save_as_action.setShortcut(QtGui.QKeySequence("Ctrl+Shift+S"))
         file_menu.addAction(self.save_as_action)
 
         file_menu.addSeparator()
@@ -52,11 +56,13 @@ class MenuBar(QtWidgets.QMenuBar):
         file_menu.addAction(self.rename_character_action)
 
         self.close_tab_action = QtWidgets.QAction("Close Tab", file_menu)
+        self.close_tab_action.setShortcut(QtGui.QKeySequence("Ctrl+W"))
         file_menu.addAction(self.close_tab_action)
 
         file_menu.addSeparator()
 
         exit_action = QtWidgets.QAction("Exit Picker", file_menu)
+        exit_action.setShortcut(QtGui.QKeySequence("Ctrl+Shift+W"))
         file_menu.addAction(exit_action)
         exit_action.triggered.connect(self.main_window.close)
 
@@ -72,6 +78,7 @@ class MenuBar(QtWidgets.QMenuBar):
         edit_menu.addAction(self.rename_page_action)
 
         self.remove_page_action = QtWidgets.QAction("Delete Page", edit_menu)
+        self.remove_page_action.setShortcut(QtGui.QKeySequence("Ctrl+Delete"))
         edit_menu.addAction(self.remove_page_action)
 
         edit_menu.addSeparator()
@@ -79,37 +86,45 @@ class MenuBar(QtWidgets.QMenuBar):
         edit_menu.addAction(self.add_button_action)
 
         self.delete_button_action = QtWidgets.QAction("Delete Button", edit_menu)
+        self.delete_button_action.setShortcut(QtGui.QKeySequence("Delete"))
         edit_menu.addAction(self.delete_button_action)
 
         edit_menu.addSeparator()
 
         self.current_mode_action = QtWidgets.QAction("Switch to Animate Mode", edit_menu)
+        self.current_mode_action.setShortcut(QtGui.QKeySequence("Y"))
         edit_menu.addAction(self.current_mode_action)
 
         # View menu
         view_menu = self.addMenu("View")
 
         self.frame_action = QtWidgets.QAction("Frame Selected/All", view_menu)
+        self.frame_action.setShortcut(QtGui.QKeySequence("F"))
         view_menu.addAction(self.frame_action)
 
         self.zoom_in_action = QtWidgets.QAction("Zoom In", view_menu)
+        self.zoom_in_action.setShortcut(QtGui.QKeySequence("Ctrl+="))
         view_menu.addAction(self.zoom_in_action)
 
         self.zoom_out_action = QtWidgets.QAction("Zoom Out", view_menu)
+        self.zoom_out_action.setShortcut(QtGui.QKeySequence("Ctrl+-"))
         view_menu.addAction(self.zoom_out_action)
 
         self.zoom_reset_action = QtWidgets.QAction("Reset Zoom", view_menu)
+        self.zoom_reset_action.setShortcut(QtGui.QKeySequence("Ctrl+0"))
         view_menu.addAction(self.zoom_reset_action)
 
         view_menu.addSeparator()
 
         self.toolbox_visibility_action = QtWidgets.QAction("ToolBox", view_menu)
+        self.toolbox_visibility_action.setShortcut(QtGui.QKeySequence("T"))
         self.toolbox_visibility_action.setCheckable(True)
         view_menu.addAction(self.toolbox_visibility_action)
 
         # Help menu
         help_menu = self.addMenu("Help")
         about_action = QtWidgets.QAction("About", help_menu)
+        about_action.setShortcut(QtGui.QKeySequence("F1"))
         help_menu.addAction(about_action)
         about_action.triggered.connect(self.show_about_dialog)
 
