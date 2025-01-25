@@ -82,6 +82,17 @@ class EditBox(QtWidgets.QGroupBox):
         self.character_pic_button.setEnabled(enabled)
 
     # ------------------------
+    #  Mouse Events
+    # ------------------------
+    def mousePressEvent(self, event):
+        if event.button() == QtCore.Qt.RightButton:
+            # Show the context menu for the page button area
+            self.context_menu.set_context_type('tool_box')
+            self.context_menu.exec_(event.globalPos())
+        else:
+            super().mousePressEvent(event)
+
+    # ------------------------
     #  Character Settings
     # ------------------------
     def add_character_settings(self, parent_layout):
@@ -325,96 +336,156 @@ class EditBox(QtWidgets.QGroupBox):
     #  Picker Button Section
     # ------------------------
     def add_picker_button_controls(self, parent_layout):
-        """Adds the Picker Button section using CollapsibleBox."""
+        """Adds the Picker Button section using a compact grid layout."""
         picker_box = custom.CollapsibleBox("Picker Button")
         parent_layout.addWidget(picker_box)
 
-        picker_layout = QtWidgets.QFormLayout()
+        picker_layout = QtWidgets.QGridLayout()  # Grid layout for compact arrangement
 
-        # Label Input
+        # ---------- First Row: Form Layouts ----------
+
+        # Left-side form layout: Label, Shape, Direction, Color
+        left_form_layout = QtWidgets.QFormLayout()
+
         self.picker_label_input = QtWidgets.QLineEdit()
         self.picker_label_input.editingFinished.connect(self.update_picker_button_name)
-        picker_layout.addRow("Label:", self.picker_label_input)
+        left_form_layout.addRow("Label:", self.picker_label_input)
 
-        # Grid Position
+        self.shape_combo_box = QtWidgets.QComboBox()
+        self.shape_combo_box.addItems(["rectangle", "circle", "triangle"])
+        left_form_layout.addRow("Shape:", self.shape_combo_box)
+
+        color_opacity_layout = QtWidgets.QHBoxLayout()
+        self.color_button = QtWidgets.QPushButton(" ")
+        self.color_button.setFixedSize(25, 25)  # Fixed square size
+        self.color_button.clicked.connect(self.open_color_dialog)
+        
+        # Get the default color and apply it
+        default_color = self.get_default_picker_data()["color"]
+        self.selected_color = default_color.name()  # Store default color
+
+        # Set the color using QPalette instead of stylesheet
+        palette = self.color_button.palette()
+        palette.setColor(QtGui.QPalette.Button, default_color)
+        self.color_button.setAutoFillBackground(True)
+        self.color_button.setPalette(palette)
+        self.color_button.update()
+
+        color_opacity_layout.addWidget(self.color_button)
+
+        default_opacity = self.get_default_picker_data()["opacity"]
+        self.opacity_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.opacity_slider.setRange(1, 10)
+        self.opacity_slider.setSingleStep(1)
+        self.opacity_slider.setValue(default_opacity)  # Use default from data_dict
+        self.opacity_slider.valueChanged.connect(self.update_picker_opacity)
+        color_opacity_layout.addWidget(self.opacity_slider)
+
+        left_form_layout.addRow("Color:", color_opacity_layout)
+
+        self.direction_dial = QtWidgets.QDial()
+        self.direction_dial.setRange(0, 360)
+        self.direction_dial.setNotchesVisible(True)
+        self.direction_dial.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        left_form_layout.addRow("Orient:", self.direction_dial)
+
+        left_widget = QtWidgets.QWidget()
+        left_widget.setLayout(left_form_layout)
+        left_widget.setMinimumWidth(125)  # Set minimum width
+
+        picker_layout.addWidget(left_widget, 0, 0)
+
+        # Middle Spacer (to create separation)
+        picker_layout.addItem(QtWidgets.QSpacerItem(5, 10, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Minimum), 0, 1)
+
+        # Right-side form layout: Grid Pos, Size, Opacity, Mode, Command
+        right_form_layout = QtWidgets.QFormLayout()
+
         grid_pos_layout = QtWidgets.QHBoxLayout()
         self.picker_grid_x = QtWidgets.QSpinBox()
         self.picker_grid_x.setRange(-9999, 9999)
+        grid_pos_layout.addWidget(QtWidgets.QLabel(" (x)"))
         grid_pos_layout.addWidget(self.picker_grid_x)
 
         self.picker_grid_y = QtWidgets.QSpinBox()
         self.picker_grid_y.setRange(-9999, 9999)
+        grid_pos_layout.addWidget(QtWidgets.QLabel("(y)"))
         grid_pos_layout.addWidget(self.picker_grid_y)
-        picker_layout.addRow("Grid Pos (x, y):", grid_pos_layout)
+        right_form_layout.addRow("Grid:", grid_pos_layout)
 
-        # Size Controls
         size_layout = QtWidgets.QHBoxLayout()
         self.picker_width = QtWidgets.QSpinBox()
         self.picker_width.setRange(1, 50)
+        size_layout.addWidget(QtWidgets.QLabel(" width"))
         size_layout.addWidget(self.picker_width)
 
         self.picker_height = QtWidgets.QSpinBox()
         self.picker_height.setRange(1, 50)
+        size_layout.addWidget(QtWidgets.QLabel("height"))
         size_layout.addWidget(self.picker_height)
-        picker_layout.addRow("Size (w, h):", size_layout)
+        right_form_layout.addRow("Size:", size_layout)
 
-        # Shape Selection
-        self.shape_combo_box = QtWidgets.QComboBox()
-        self.shape_combo_box.addItems(["rectangle", "circle", "triangle"])
-        picker_layout.addRow("Shape:", self.shape_combo_box)
-
-        # Color Picker
-        self.color_button = QtWidgets.QPushButton()
-        self.color_button.setText("Select Color")
-        self.color_button.clicked.connect(self.open_color_dialog)
-        picker_layout.addRow("Color:", self.color_button)
-
-        # Command Mode
-        self.command_mode_combo_box = QtWidgets.QComboBox()
-        self.command_mode_combo_box.addItems(["Python", "MEL", "Select"])
-        self.command_mode_combo_box.currentIndexChanged.connect(self.on_command_mode_changed)
-        picker_layout.addRow("Command Mode:", self.command_mode_combo_box)
-
-        # Command String
+        # Command Text Edit
         self.command_text_edit = QtWidgets.QPlainTextEdit()
-        picker_layout.addRow("Command:", self.command_text_edit)
+        self.command_text_edit.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        right_form_layout.addRow("Exec:", self.command_text_edit)
 
-        # Add and Delete Buttons
+        # Create radio buttons
+        self.radio_python = QtWidgets.QRadioButton("Python")
+        self.radio_mel = QtWidgets.QRadioButton("MEL")
+        self.radio_select = QtWidgets.QRadioButton("Select")
+
+        # Connect the toggled signals to the on_command_mode_changed method
+        self.radio_python.toggled.connect(self.on_command_mode_changed)
+        self.radio_mel.toggled.connect(self.on_command_mode_changed)
+        self.radio_select.toggled.connect(self.on_command_mode_changed)
+
+        # Group the radio buttons (optional for mutual exclusivity)
+        self.command_mode_group = QtWidgets.QButtonGroup()
+        self.command_mode_group.addButton(self.radio_python)
+        self.command_mode_group.addButton(self.radio_mel)
+        self.command_mode_group.addButton(self.radio_select)
+
+        # Set default selection
+        self.radio_python.setChecked(True)
+
+        command_mode_layout = QtWidgets.QHBoxLayout()
+        command_mode_layout.addWidget(self.radio_python)
+        command_mode_layout.addWidget(self.radio_mel)
+        command_mode_layout.addWidget(self.radio_select)
+        right_form_layout.addRow("Mode:", command_mode_layout)
+
+        right_widget = QtWidgets.QWidget()
+        right_widget.setLayout(right_form_layout)
+        right_widget.setMinimumWidth(275)  # Set minimum width
+
+        picker_layout.addWidget(right_widget, 0, 2)
+
+        # ---------- Second Row: Buttons ----------
+
         button_layout = QtWidgets.QHBoxLayout()
-        self.picker_submit_button = QtWidgets.QPushButton("Add")
+
+        self.picker_submit_button = QtWidgets.QPushButton("Add/Update")
         self.picker_submit_button.clicked.connect(self.handle_submit_clicked)
         button_layout.addWidget(self.picker_submit_button)
 
         self.picker_delete_button = QtWidgets.QPushButton("Delete")
         self.picker_delete_button.clicked.connect(self.handle_delete_clicked)
         button_layout.addWidget(self.picker_delete_button)
-        picker_layout.addRow(button_layout)
+
+        picker_layout.addLayout(button_layout, 1, 0, 1, 3)  # Span across three columns
+
+        # Column stretch settings for better resizing behavior
+        picker_layout.setColumnStretch(0, 3)
+        picker_layout.setColumnStretch(1, 1)
+        picker_layout.setColumnStretch(2, 4)
 
         picker_box.setContentLayout(picker_layout)
         return picker_box
 
-    def update_picker_button_name(self):
-        """User finished editing the picker_label_input."""
-        new_label = self.picker_label_input.text().strip()
-        if not new_label:
-            return
-        # You need a reference to the *currently selected* picker button
-        # Typically, your main_window or tab_manager has something like self.selected_picker_button
-        main_window = self.window()
-        if hasattr(main_window, "selected_picker_buttons") and main_window.selected_picker_buttons:
-            btn = main_window.selected_picker_buttons[0]
-            btn.setText(new_label)
-
     # ------------------------
     #  Picker Button Logic
     # ------------------------
-    def open_color_dialog(self):
-        """Open a color dialog to select a color."""
-        color = QtWidgets.QColorDialog.getColor(initial=QtGui.QColor(self.selected_color), parent=self, title="Select Button Color")
-        if color.isValid():
-            self.selected_color = color.name()
-            self.color_button.setStyleSheet(f"background-color: {self.selected_color}")
-
     def get_default_picker_data(self, mode=None):
         if mode == "Python":
             default_command_string = (
@@ -437,9 +508,10 @@ class EditBox(QtWidgets.QGroupBox):
             "grid_pos": (0, 0),
             "size_in_cells": (1, 1),
             "shape": "rectangle",
-            "color": "#A6A6A6",
+            "color": QtGui.QColor("#f9aa26"),
             "command_mode": mode,
-            "command_string": default_command_string
+            "command_string": default_command_string,
+            "opacity": 9
         }
     
     def handle_submit_clicked(self, external_grid_pos=None):
@@ -448,7 +520,15 @@ class EditBox(QtWidgets.QGroupBox):
         OR when handle_menu_add_button() in the main_window passes an external grid position.
         Gathers form data into a dict, then calls main_window.submit_picker.
         """
-        command_mode = self.command_mode_combo_box.currentText()
+        if self.radio_python.isChecked():
+            command_mode = "Python"
+        elif self.radio_mel.isChecked():
+            command_mode = "MEL"
+        elif self.radio_select.isChecked():
+            command_mode = "Select"
+        else:
+            command_mode = None  # Handle unexpected case if needed
+
         data_dict = self.get_default_picker_data(mode=command_mode)
         
         # Label
@@ -473,7 +553,15 @@ class EditBox(QtWidgets.QGroupBox):
         data_dict["color"] = self.selected_color
 
         # Command Mode
-        command_mode = self.command_mode_combo_box.currentText()
+        if self.radio_python.isChecked():
+            command_mode = "Python"
+        elif self.radio_mel.isChecked():
+            command_mode = "MEL"
+        elif self.radio_select.isChecked():
+            command_mode = "Select"
+        else:
+            command_mode = None  # Handle unexpected case if needed
+
         data_dict["command_mode"] = command_mode
 
         # Command String
@@ -500,18 +588,34 @@ class EditBox(QtWidgets.QGroupBox):
         # Emit a signal to delete the selected picker button
         self.main_window.delete_selected_picker_button
 
-    def on_command_mode_changed(self, index):
-        new_mode = self.command_mode_combo_box.currentText()
+    def on_command_mode_changed(self, checked):
+        """
+        Update command text as soon as a radio button is toggled ON.
+        If 'checked' is False, the radio is being turned OFF, so ignore it.
+        """
+        if not checked:
+            return  # We only do work when a button is turned ON
 
-        # 1) Retrieve old snippet from old mode
+        # Identify which radio triggered the signal
+        button = self.sender()
+
+        if button == self.radio_python:
+            new_mode = "Python"
+        elif button == self.radio_mel:
+            new_mode = "MEL"
+        elif button == self.radio_select:
+            new_mode = "Select"
+        else:
+            return
+
+        # 1) Retrieve old snippet
         old_data = self.get_default_picker_data(mode=self.last_command_mode)
         old_snippet = old_data["command_string"]
 
-        # 2) Check what’s currently in the text edit
+        # 2) Check what is currently in the text edit
         existing_text = self.command_text_edit.toPlainText().strip()
 
-        # 3) If user hasn't typed anything new (it's empty or matches old snippet),
-        #    then overwrite with new snippet
+        # 3) If user hasn't typed anything new, set the default snippet
         if not existing_text or existing_text == old_snippet:
             new_data = self.get_default_picker_data(mode=new_mode)
             new_snippet = new_data["command_string"]
@@ -528,7 +632,15 @@ class EditBox(QtWidgets.QGroupBox):
         """
         if picker_button is None:
             # Populate with default values
-            command_mode = self.command_mode_combo_box.currentText()
+            if self.radio_python.isChecked():
+                command_mode = "Python"
+            elif self.radio_mel.isChecked():
+                command_mode = "MEL"
+            elif self.radio_select.isChecked():
+                command_mode = "Select"
+            else:
+                command_mode = None  # Handle unexpected case if needed
+
             data = self.get_default_picker_data(mode=command_mode)
 
             self.picker_label_input.setText(data["label"])
@@ -547,9 +659,12 @@ class EditBox(QtWidgets.QGroupBox):
             self.color_button.setStyleSheet(f"background-color: {self.selected_color}")
 
             # Command Mode
-            index = self.command_mode_combo_box.findText(data["command_mode"])
-            if index != -1:
-                self.command_mode_combo_box.setCurrentIndex(index)
+            if data["command_mode"] == "Python":
+                self.radio_python.setChecked(True)
+            elif data["command_mode"] == "MEL":
+                self.radio_mel.setChecked(True)
+            elif data["command_mode"] == "Select":
+                self.radio_select.setChecked(True)
 
             # Command String
             self.command_text_edit.setPlainText(data["command_string"])
@@ -577,9 +692,12 @@ class EditBox(QtWidgets.QGroupBox):
             self.color_button.setStyleSheet(f"background-color: {self.selected_color}")
 
             # Command Mode
-            index = self.command_mode_combo_box.findText(data["command_mode"])
-            if index != -1:
-                self.command_mode_combo_box.setCurrentIndex(index)
+            if data["command_mode"] == "Python":
+                self.radio_python.setChecked(True)
+            elif data["command_mode"] == "MEL":
+                self.radio_mel.setChecked(True)
+            elif data["command_mode"] == "Select":
+                self.radio_select.setChecked(True)
 
             # Command String
             self.command_text_edit.setPlainText(data["command_string"])
@@ -588,10 +706,35 @@ class EditBox(QtWidgets.QGroupBox):
             self.picker_submit_button.setText("Update")
             self.picker_delete_button.setEnabled(True)
 
-    def mousePressEvent(self, event):
-        if event.button() == QtCore.Qt.RightButton:
-            # Show the context menu for the page button area
-            self.context_menu.set_context_type('tool_box')
-            self.context_menu.exec_(event.globalPos())
-        else:
-            super().mousePressEvent(event)
+    # ------------------------
+    #  Picker Button Helpers
+    # ------------------------
+    def open_color_dialog(self):
+        """Open a color dialog to select a color."""
+        color = QtWidgets.QColorDialog.getColor(initial=QtGui.QColor(self.selected_color), parent=self, title="Select Button Color")
+        if color.isValid():
+            self.selected_color = color.name()
+            self.color_button.setStyleSheet(f"background-color: {self.selected_color}")
+
+    def update_picker_opacity(self):
+        """Update opacity of the selected picker button based on the slider value."""
+        opacity_value = self.opacity_slider.value()  # Gets values from 1-10
+
+        main_window = self.window()
+        if hasattr(main_window, "selected_picker_buttons") and main_window.selected_picker_buttons:
+            for btn in main_window.selected_picker_buttons:
+                btn.opacity = opacity_value  # Store raw slider value (1-10)
+                btn.set_color(btn.color)  # Apply the mapped opacity inside set_color
+                btn.data_dict["opacity"] = opacity_value  # Store raw value in data_dict
+
+    def update_picker_button_name(self):
+        """User finished editing the picker_label_input."""
+        new_label = self.picker_label_input.text().strip()
+        if not new_label:
+            return
+        # You need a reference to the *currently selected* picker button
+        # Typically, your main_window or tab_manager has something like self.selected_picker_button
+        main_window = self.window()
+        if hasattr(main_window, "selected_picker_buttons") and main_window.selected_picker_buttons:
+            btn = main_window.selected_picker_buttons[0]
+            btn.setText(new_label)

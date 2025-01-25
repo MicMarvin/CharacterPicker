@@ -263,78 +263,6 @@ class GridWidget(QtWidgets.QWidget):
         self.bg_scale_factor = scale
         self.update()
 
-    def mousePressEvent(self, event):
-        if event.button() == QtCore.Qt.MiddleButton:
-            self._dragging = True
-            self._drag_start = event.pos()
-            event.accept()
-
-        elif event.button() == QtCore.Qt.LeftButton:
-            # Check if user clicked on a child (e.g. a PickerButton)
-            child = self.childAt(event.pos())
-            # If child is None or not a PickerButton, deselect
-            if not child or not isinstance(child, picker.PickerButton):
-                # Clear selection for all buttons
-                top_level = self.window()
-                if hasattr(top_level, "clear_multi_select"):
-                    top_level.clear_multi_select()  
-        elif event.button() == QtCore.Qt.RightButton:
-            child = self.childAt(event.pos())
-            selected_button = child if isinstance(child, picker.PickerButton) else None
-
-            if selected_button:
-                self.context_menu.selected_button = selected_button
-                self.context_menu.set_context_type('button')
-                self.context_menu.grid_pos = None
-            else:
-                self.context_menu.selected_button = None
-                self.context_menu.set_context_type('grid')
-
-                # Get the grid coordinates of the right-clicked spot
-                gx, gy = self.pixel_to_grid(event.pos().x(), event.pos().y())
-                # Store that grid position in the context menu
-                self.context_menu.grid_pos = (round(gx), round(gy))
-
-            self.context_menu.exec_(event.globalPos())
-        else:
-            super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event):
-        if self._dragging:
-            delta = event.pos() - self._drag_start
-            self._drag_start = event.pos()
-
-            self.offset_x += delta.x()
-            self.offset_y += delta.y()
-
-            self.reposition_all_buttons()
-            self.update()
-            event.accept()
-        else:
-            super().mouseMoveEvent(event)
-
-    def mouseReleaseEvent(self, event):
-        if event.button() == QtCore.Qt.MiddleButton:
-            self._dragging = False
-            event.accept()
-        else:
-            super().mouseReleaseEvent(event)
-
-    def wheelEvent(self, event):
-        """
-        Zoom in/out with mouse wheel. 
-        'delta' is typically 120 per wheel step in many systems,
-        so we pick a step=2 or step=1 to get a nice ratio.
-        """
-        delta = event.angleDelta().y()
-        step = 2  # or 1 if you want smaller increments
-
-        if delta > 0:
-            self.apply_zoom(step)
-        else:
-            self.apply_zoom(-step)
-        event.accept()
-
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.reposition_all_buttons()
@@ -356,19 +284,6 @@ class GridWidget(QtWidgets.QWidget):
         for child in self.findChildren(QtWidgets.QPushButton):
             if hasattr(child, "place_in_grid"):
                 child.place_in_grid()
-
-    def center_on_zero(self):
-        px, py = self.grid_to_pixel(0, 0)
-        desired_cx = self.width() / 2.0
-        desired_cy = self.height() / 2.0
-        shift_x = desired_cx - px
-        shift_y = desired_cy - py
-
-        self.offset_x += shift_x
-        self.offset_y += shift_y
-
-        self.reposition_all_buttons()
-        self.update()
 
     def frame_all(self):
         # 1) Gather bounding box from all PickerButtons
@@ -520,3 +435,78 @@ class GridWidget(QtWidgets.QWidget):
         print(f"[GridWidget] Received event '{event_type}' from button '{btn_label}', shift={shift_pressed}")
         # Forward the event upwards with the shift boolean
         self.picker_event.emit(event_type, btn, shift_pressed)
+
+    # ------------------------
+    #  Mouse Events
+    # ------------------------
+    def mousePressEvent(self, event):
+        if event.button() == QtCore.Qt.MiddleButton:
+            self._dragging = True
+            self._drag_start = event.pos()
+            event.accept()
+
+        elif event.button() == QtCore.Qt.LeftButton:
+            # Check if user clicked on a child (e.g. a PickerButton)
+            child = self.childAt(event.pos())
+            # If child is None or not a PickerButton, deselect
+            if not child or not isinstance(child, picker.PickerButton):
+                # Clear selection for all buttons
+                top_level = self.window()
+                if hasattr(top_level, "clear_multi_select"):
+                    top_level.clear_multi_select()  
+        elif event.button() == QtCore.Qt.RightButton:
+            child = self.childAt(event.pos())
+            selected_button = child if isinstance(child, picker.PickerButton) else None
+
+            if selected_button:
+                self.context_menu.selected_button = selected_button
+                self.context_menu.set_context_type('button')
+                self.context_menu.grid_pos = None
+            else:
+                self.context_menu.selected_button = None
+                self.context_menu.set_context_type('grid')
+
+                # Get the grid coordinates of the right-clicked spot
+                gx, gy = self.pixel_to_grid(event.pos().x(), event.pos().y())
+                # Store that grid position in the context menu
+                self.context_menu.grid_pos = (round(gx), round(gy))
+
+            self.context_menu.exec_(event.globalPos())
+        else:
+            super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self._dragging:
+            delta = event.pos() - self._drag_start
+            self._drag_start = event.pos()
+
+            self.offset_x += delta.x()
+            self.offset_y += delta.y()
+
+            self.reposition_all_buttons()
+            self.update()
+            event.accept()
+        else:
+            super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == QtCore.Qt.MiddleButton:
+            self._dragging = False
+            event.accept()
+        else:
+            super().mouseReleaseEvent(event)
+
+    def wheelEvent(self, event):
+        """
+        Zoom in/out with mouse wheel. 
+        'delta' is typically 120 per wheel step in many systems,
+        so we pick a step=2 or step=1 to get a nice ratio.
+        """
+        delta = event.angleDelta().y()
+        step = 2  # or 1 if you want smaller increments
+
+        if delta > 0:
+            self.apply_zoom(step)
+        else:
+            self.apply_zoom(-step)
+        event.accept()

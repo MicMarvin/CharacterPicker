@@ -23,7 +23,7 @@ class CharacterPicker(QtWidgets.QMainWindow):
         super().__init__(parent)
         self.setWindowTitle("Character Picker")
         self.resize(659, 1210)
-        self.setMinimumSize(400, 800)  # Set a minimum size to avoid UI breaking
+        self.setMinimumSize(500, 800)  # Set a minimum size to avoid UI breaking
 
         # tracks which GridWidget we’re currently connected to
         self._connected_grid = None

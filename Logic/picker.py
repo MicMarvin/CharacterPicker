@@ -30,6 +30,7 @@ class PickerButton(QtWidgets.QPushButton):
         self._command_string = self.data_dict["command_string"]
         self._grid_pos = self.data_dict["grid_pos"]
         self._size_in_cells = self.data_dict["size_in_cells"]
+        self._opacity = self.data_dict["opacity"]
         
         # Selection state
         self._selected = False
@@ -44,6 +45,11 @@ class PickerButton(QtWidgets.QPushButton):
         # Enable hover events
         self.setAttribute(QtCore.Qt.WA_Hover, True)
         self.setMouseTracking(True)  # Optional
+
+        # Apply initial color and opacity
+        self.set_color(self._color)
+
+        print(f"PickerButton initialized with color type: {type(self._color)} - Value: {self._color}")
     
     # ------------------- Property Setters and Getters -------------------
 
@@ -56,16 +62,6 @@ class PickerButton(QtWidgets.QPushButton):
         self._shape = value
         self.data_dict["shape"] = value
         self.update()  # Trigger repaint
-
-    @property
-    def color(self):
-        return self._color
-
-    @color.setter
-    def color(self, value):
-        self._color = value
-        self.data_dict["color"] = value
-        self.update()
 
     @property
     def command_mode(self):
@@ -104,6 +100,39 @@ class PickerButton(QtWidgets.QPushButton):
         self._size_in_cells = value
         self.data_dict["size_in_cells"] = value
         self.place_in_grid()
+
+    @property
+    def color(self):
+        return self._color
+
+    @color.setter
+    def color(self, value):
+        self.set_color(QtGui.QColor(value))
+
+    @property
+    def opacity(self):
+        return self._opacity
+
+    @opacity.setter
+    def opacity(self, value):
+        self._opacity = value
+        self.data_dict["opacity"] = value
+        self.set_color(self._color)
+
+    def set_color(self, color):
+        """Set the button color and apply opacity if necessary."""
+        if not isinstance(color, QtGui.QColor):
+            color = QtGui.QColor(color)  # Ensure it's a QColor instance
+
+        # Map the opacity value (1-10) to the range 10%-100%
+        mapped_opacity = self._opacity * 10  # Assuming opacity range is 1-10
+
+        alpha = int(255 * (mapped_opacity / 100.0))  # Convert to 0-255 scale
+        color.setAlpha(alpha)
+
+        self._color = color
+        self.data_dict["color"] = color.name(QtGui.QColor.HexRgb)
+        self.update()
 
     # ------------------- Style Management -------------------
 
@@ -225,22 +254,21 @@ class PickerButton(QtWidgets.QPushButton):
 
         # Determine colors based on selection state
         if self._selected:
-            brush_color = self.color # Selected background color
-            pen_color = "#ffffff"    # Selected border color
-            pen_width = 2            # Selected border width
+            brush_color = self._color  # Selected background color
+            pen_color = QtGui.QColor("#ffffff")  # Selected border color
+            pen_width = 2  # Selected border width
         elif self._hovered:
-            # Define hover styles
-            brush_color = self.color # Hover background color
-            pen_color = "#ffffff"    # Hover border color
-            pen_width = 2            # Hover border width
+            brush_color = self._color  # Hover background color
+            pen_color = QtGui.QColor("#ffffff")  # Hover border color
+            pen_width = 2  # Hover border width
         else:
-            brush_color = self.color # Unselected background color
-            pen_color = "#000000"    # Unselected border color
-            pen_width = 1            # Unselected border width
+            brush_color = self._color  # Unselected background color
+            pen_color = QtGui.QColor("#000000")  # Unselected border color
+            pen_width = 1  # Unselected border width
 
-        # Set up the brush and pen
-        brush = QtGui.QBrush(QtGui.QColor(brush_color))
-        pen = QtGui.QPen(QtGui.QColor(pen_color))
+        # Set up the brush and pen with opacity included
+        brush = QtGui.QBrush(brush_color)
+        pen = QtGui.QPen(pen_color)
         pen.setWidth(pen_width)
 
         painter.setBrush(brush)
@@ -249,28 +277,28 @@ class PickerButton(QtWidgets.QPushButton):
         # Draw the appropriate shape
         shape = self.shape
         if shape == "rectangle":
-            painter.drawRect(2, 2, self.width()-4, self.height()-4)
+            painter.drawRect(2, 2, self.width() - 4, self.height() - 4)
         elif shape == "circle":
-            painter.drawEllipse(2, 2, self.width()-4, self.height()-4)
+            painter.drawEllipse(2, 2, self.width() - 4, self.height() - 4)
         elif shape == "triangle":
             points = [
-                QtCore.QPoint(self.width()/2, 2),
-                QtCore.QPoint(2, self.height()-2),
-                QtCore.QPoint(self.width()-2, self.height()-2)
+                QtCore.QPoint(self.width() / 2, 2),
+                QtCore.QPoint(2, self.height() - 2),
+                QtCore.QPoint(self.width() - 2, self.height() - 2)
             ]
             painter.drawPolygon(QtGui.QPolygon(points))
         else:
             # Fallback to rectangle if unknown shape
-            painter.drawRect(2, 2, self.width()-4, self.height()-4)
+            painter.drawRect(2, 2, self.width() - 4, self.height() - 4)
 
-        # Draw the button text
-        # Adjust text color based on background for visibility
-        bg_color = QtGui.QColor(self.color)
-        brightness = bg_color.red() * 0.299 + bg_color.green() * 0.587 + bg_color.blue() * 0.114
-        text_color = "#000000" if brightness > 186 else "#FFFFFF"
+        # Determine text color based on the background brightness
+        brightness = brush_color.red() * 0.299 + brush_color.green() * 0.587 + brush_color.blue() * 0.114
+        text_color = QtGui.QColor("#000000") if brightness > 186 else QtGui.QColor("#FFFFFF")
 
-        painter.setPen(QtGui.QColor(text_color))
+        painter.setPen(text_color)
         painter.drawText(self.rect(), QtCore.Qt.AlignCenter, self.data_dict["label"])
+
+        painter.end()
 
     def _lighten_color(self, color, factor=0.2):
         """
@@ -370,6 +398,10 @@ def create_picker_button(grid_widget, data_dict):
     """
     Actually create and place a new PickerButton in the given GridWidget.
     """
+    # Ensure color is properly formatted as a QColor object
+    if isinstance(data_dict["color"], str):
+        data_dict["color"] = QtGui.QColor(data_dict["color"])
+
     btn = PickerButton(data_dict=data_dict, grid_widget=grid_widget)
     
     # Set grid_pos and size_in_cells using the property setters

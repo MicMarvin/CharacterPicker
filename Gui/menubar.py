@@ -110,10 +110,6 @@ class MenuBar(QtWidgets.QMenuBar):
         self.zoom_out_action.setShortcut(QtGui.QKeySequence("Ctrl+-"))
         view_menu.addAction(self.zoom_out_action)
 
-        self.zoom_reset_action = QtWidgets.QAction("Reset Zoom", view_menu)
-        self.zoom_reset_action.setShortcut(QtGui.QKeySequence("Ctrl+0"))
-        view_menu.addAction(self.zoom_reset_action)
-
         view_menu.addSeparator()
 
         self.toolbox_visibility_action = QtWidgets.QAction("ToolBox", view_menu)
