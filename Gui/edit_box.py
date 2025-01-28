@@ -359,7 +359,7 @@ class EditBox(QtWidgets.QGroupBox):
         self.color_button = QtWidgets.QPushButton(" ")
         self.color_button.setFixedSize(25, 25)  # Fixed square size
         self.color_button.clicked.connect(self.open_color_dialog)
-        
+
         # Get the default color and apply it
         default_color = self.get_default_picker_data()["color"]
         self.selected_color = default_color.name()  # Store default color
@@ -384,9 +384,14 @@ class EditBox(QtWidgets.QGroupBox):
         left_form_layout.addRow("Color:", color_opacity_layout)
 
         self.direction_dial = QtWidgets.QDial()
-        self.direction_dial.setRange(0, 360)
+        self.direction_dial.setRange(-90, 90)
+        self.direction_dial.setSingleStep(15)  # Set notch target to 15 degrees
         self.direction_dial.setNotchesVisible(True)
+        self.direction_dial.setWrapping(True)  # No wrapping to prevent exceeding the range
+        self.direction_dial.setValue(0)  # Initialize to 0 degrees
+        self.direction_dial.setToolTip("Set button orientation")
         self.direction_dial.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        self.direction_dial.valueChanged.connect(self.on_direction_changed)
         left_form_layout.addRow("Orient:", self.direction_dial)
 
         left_widget = QtWidgets.QWidget()
@@ -396,7 +401,7 @@ class EditBox(QtWidgets.QGroupBox):
         picker_layout.addWidget(left_widget, 0, 0)
 
         # Middle Spacer (to create separation)
-        picker_layout.addItem(QtWidgets.QSpacerItem(5, 10, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Minimum), 0, 1)
+        picker_layout.addItem(QtWidgets.QSpacerItem(0, 10, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Minimum), 0, 1)
 
         # Right-side form layout: Grid Pos, Size, Opacity, Mode, Command
         right_form_layout = QtWidgets.QFormLayout()
@@ -404,24 +409,24 @@ class EditBox(QtWidgets.QGroupBox):
         grid_pos_layout = QtWidgets.QHBoxLayout()
         self.picker_grid_x = QtWidgets.QSpinBox()
         self.picker_grid_x.setRange(-9999, 9999)
-        grid_pos_layout.addWidget(QtWidgets.QLabel(" (x)"))
+        grid_pos_layout.addWidget(QtWidgets.QLabel("x:"))
         grid_pos_layout.addWidget(self.picker_grid_x)
 
         self.picker_grid_y = QtWidgets.QSpinBox()
         self.picker_grid_y.setRange(-9999, 9999)
-        grid_pos_layout.addWidget(QtWidgets.QLabel("(y)"))
+        grid_pos_layout.addWidget(QtWidgets.QLabel("y:"))
         grid_pos_layout.addWidget(self.picker_grid_y)
         right_form_layout.addRow("Grid:", grid_pos_layout)
 
         size_layout = QtWidgets.QHBoxLayout()
         self.picker_width = QtWidgets.QSpinBox()
         self.picker_width.setRange(1, 50)
-        size_layout.addWidget(QtWidgets.QLabel(" width"))
+        size_layout.addWidget(QtWidgets.QLabel("width:"))
         size_layout.addWidget(self.picker_width)
 
         self.picker_height = QtWidgets.QSpinBox()
         self.picker_height.setRange(1, 50)
-        size_layout.addWidget(QtWidgets.QLabel("height"))
+        size_layout.addWidget(QtWidgets.QLabel("height:"))
         size_layout.addWidget(self.picker_height)
         right_form_layout.addRow("Size:", size_layout)
 
@@ -453,11 +458,11 @@ class EditBox(QtWidgets.QGroupBox):
         command_mode_layout.addWidget(self.radio_python)
         command_mode_layout.addWidget(self.radio_mel)
         command_mode_layout.addWidget(self.radio_select)
-        right_form_layout.addRow("Mode:", command_mode_layout)
+        right_form_layout.addRow("Type:", command_mode_layout)
 
         right_widget = QtWidgets.QWidget()
         right_widget.setLayout(right_form_layout)
-        right_widget.setMinimumWidth(275)  # Set minimum width
+        right_widget.setMinimumWidth(300)  # Set minimum width
 
         picker_layout.addWidget(right_widget, 0, 2)
 
@@ -511,7 +516,8 @@ class EditBox(QtWidgets.QGroupBox):
             "color": QtGui.QColor("#f9aa26"),
             "command_mode": mode,
             "command_string": default_command_string,
-            "opacity": 9
+            "opacity": 9,
+            "direction": 0
         }
     
     def handle_submit_clicked(self, external_grid_pos=None):
@@ -530,7 +536,7 @@ class EditBox(QtWidgets.QGroupBox):
             command_mode = None  # Handle unexpected case if needed
 
         data_dict = self.get_default_picker_data(mode=command_mode)
-        
+
         # Label
         label = self.picker_label_input.text()
         data_dict["label"] = label
@@ -568,6 +574,10 @@ class EditBox(QtWidgets.QGroupBox):
         command_string = self.command_text_edit.toPlainText().strip()
         data_dict["command_string"] = command_string
 
+        # Direction
+        direction = self.direction_dial.value()
+        data_dict["direction"] = direction
+
         # -----------------------------------------
         # OVERRIDE GRID POSITION IF PROVIDED EXTERNALLY
         # -----------------------------------------
@@ -583,10 +593,11 @@ class EditBox(QtWidgets.QGroupBox):
         # Submit
         self.main_window.submit_picker(data_dict)
 
+
     def handle_delete_clicked(self):
         """Handle Delete button clicks."""
         # Emit a signal to delete the selected picker button
-        self.main_window.delete_selected_picker_button
+        self.main_window.delete_selected_picker_button()
 
     def on_command_mode_changed(self, checked):
         """
@@ -669,6 +680,11 @@ class EditBox(QtWidgets.QGroupBox):
             # Command String
             self.command_text_edit.setPlainText(data["command_string"])
 
+            # Direction
+            self.direction_dial.blockSignals(True)  # Prevent triggering on_direction_changed
+            self.direction_dial.setValue(data["direction"])
+            self.direction_dial.blockSignals(False)
+
             # Update buttons
             self.picker_submit_button.setText("Add")
             self.picker_delete_button.setEnabled(False)
@@ -701,6 +717,11 @@ class EditBox(QtWidgets.QGroupBox):
 
             # Command String
             self.command_text_edit.setPlainText(data["command_string"])
+
+            # Direction
+            self.direction_dial.blockSignals(True)  # Prevent triggering on_direction_changed
+            self.direction_dial.setValue(data["direction"])
+            self.direction_dial.blockSignals(False)
 
             # Update buttons
             self.picker_submit_button.setText("Update")
@@ -738,3 +759,20 @@ class EditBox(QtWidgets.QGroupBox):
         if hasattr(main_window, "selected_picker_buttons") and main_window.selected_picker_buttons:
             btn = main_window.selected_picker_buttons[0]
             btn.setText(new_label)
+
+    def on_direction_changed(self, value):
+        """
+        Slot to handle changes in the direction dial.
+        Updates the direction of the selected PickerButton(s).
+        """
+        # Snap the value to the nearest 15 degrees
+        snapped_value = round(value / self.direction_dial.singleStep()) * self.direction_dial.singleStep()
+        if snapped_value != value:
+            self.direction_dial.blockSignals(True)
+            self.direction_dial.setValue(snapped_value)
+            self.direction_dial.blockSignals(False)
+
+        # Update the direction of selected buttons
+        if hasattr(self.main_window, "selected_picker_buttons") and self.main_window.selected_picker_buttons:
+            for btn in self.main_window.selected_picker_buttons:
+                btn.direction = snapped_value  # Update the direction property

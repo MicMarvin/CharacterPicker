@@ -18,6 +18,9 @@ class GridWidget(QtWidgets.QWidget):
 
     # Define a signal to emit picker button events
     picker_event = QtCore.Signal(str, object, bool)  # (event_type, PickerButton, shift_pressed)
+
+    # Define a signal to emit when the grid is panned
+    grid_panned = QtCore.Signal()
     
     def __init__(self, rows=None, cols=None, parent=None):
         super().__init__(parent)
@@ -267,6 +270,20 @@ class GridWidget(QtWidgets.QWidget):
         super().resizeEvent(event)
         self.reposition_all_buttons()
 
+    def is_position_available(self, new_grid_pos, exclude_btn=None):
+        """
+        Check if the new_grid_pos is available (no other button occupies it).
+        :param new_grid_pos: Tuple (gx, gy)
+        :param exclude_btn: PickerButton to exclude from the check (useful when moving the button itself)
+        :return: True if available, False otherwise
+        """
+        for child in self.findChildren(picker.PickerButton):
+            if child == exclude_btn:
+                continue
+            if child.grid_pos == new_grid_pos:
+                return False
+        return True
+
     def ensure_point_in_bounds(self, gx, gy, margin=2):
         if gx < self.min_x:
             self.min_x = gx - margin
@@ -281,9 +298,8 @@ class GridWidget(QtWidgets.QWidget):
         self.update()
 
     def reposition_all_buttons(self):
-        for child in self.findChildren(QtWidgets.QPushButton):
-            if hasattr(child, "place_in_grid"):
-                child.place_in_grid()
+        for child in self.findChildren(picker.PickerButton):
+            child.place_in_grid()
 
     def frame_all(self):
         # 1) Gather bounding box from all PickerButtons
@@ -409,19 +425,22 @@ class GridWidget(QtWidgets.QWidget):
         self.reposition_all_buttons()
         self.update()
 
-    def grid_to_pixel(self, gx, gy):
-        center_x = self.width() / 2.0
-        center_y = self.height() / 2.0
-        px = center_x + self.offset_x + (gx * self.cell_size)
-        py = center_y + self.offset_y - (gy * self.cell_size)
-        return (px, py)
+    def grid_to_pixel(self, grid_x, grid_y):
+        """Convert grid coordinates to pixel coordinates, accounting for panning and Y-axis inversion."""
+        # Apply panning offset
+        pixel_x = (grid_x * self.cell_size) + (self.width() / 2) + self.offset_x
+        # Invert Y-axis: positive Y upwards
+        pixel_y = (self.height() / 2) - (grid_y * self.cell_size) + self.offset_y
+        return (pixel_x, pixel_y)
 
-    def pixel_to_grid(self, px, py):
-        center_x = self.width() / 2.0
-        center_y = self.height() / 2.0
-        gx = (px - center_x - self.offset_x) / self.cell_size
-        gy = -(py - center_y - self.offset_y) / self.cell_size
-        return (gx, gy)
+    def pixel_to_grid(self, pixel_x, pixel_y):
+        """Convert pixel coordinates to grid coordinates, accounting for panning and Y-axis inversion."""
+        # Adjust for panning offset
+        adjusted_x = pixel_x - (self.width() / 2) - self.offset_x
+        adjusted_y = (self.height() / 2) - pixel_y - self.offset_y  # Invert Y-axis
+        grid_x = adjusted_x / self.cell_size
+        grid_y = adjusted_y / self.cell_size
+        return (grid_x, grid_y)
 
     def handle_picker_button_event(self, event_type, btn, shift_pressed=False):
         """
@@ -485,6 +504,10 @@ class GridWidget(QtWidgets.QWidget):
 
             self.reposition_all_buttons()
             self.update()
+
+            # Emit grid_panned signal
+            self.grid_panned.emit()
+
             event.accept()
         else:
             super().mouseMoveEvent(event)
