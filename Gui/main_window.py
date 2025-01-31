@@ -1,4 +1,7 @@
 # main_window.py
+import os
+from pathlib import Path
+import sys
 from PySide2 import QtCore, QtWidgets, QtGui
 import CharacterPicker.Gui.menubar as menubar
 import CharacterPicker.Gui.edit_box as edit
@@ -7,7 +10,8 @@ import CharacterPicker.Gui.context_menu as context
 import CharacterPicker.Gui.custom_widgets as custom
 import CharacterPicker.Logic.grid_widget as grid
 import CharacterPicker.Logic.picker as picker
-import os
+import CharacterPicker.Logic.data_handler as data
+
 import importlib
 
 importlib.reload(menubar)
@@ -17,6 +21,9 @@ importlib.reload(context)
 importlib.reload(grid)
 importlib.reload(custom)
 importlib.reload(picker)
+
+import logging
+logger = logging.getLogger(__name__)
 
 class CharacterPicker(QtWidgets.QMainWindow):
     def __init__(self, parent=None):
@@ -29,11 +36,11 @@ class CharacterPicker(QtWidgets.QMainWindow):
         self._connected_grid = None
 
         try:
-            self.icon_dir = os.path.join(os.environ["RIGGING_TOOL_ROOT"], "CharacterPicker", "Icons")
-            if not os.path.exists(self.icon_dir):
+            self.icon_dir = Path(os.environ["RIGGING_TOOL_ROOT"]) / "CharacterPicker" / "Icons"
+            if not self.icon_dir.exists():
                 raise FileNotFoundError(f"Icons directory not found: {self.icon_dir}")
         except Exception as e:
-            print(f"Error setting up icons: {e}")
+            logger.error(f"Error setting up icons: {e}")
 
         # Initialize ContextMenu
         self.context_menu = context.ContextMenu(self)
@@ -90,6 +97,8 @@ class CharacterPicker(QtWidgets.QMainWindow):
 
         # Connect signals
         self.connect_signals()
+
+        logger.info(f"Character Picker initialized.")
 
         # Populate default values when the UI is first loaded
         #self.update_toolbox_display() 
@@ -163,7 +172,7 @@ class CharacterPicker(QtWidgets.QMainWindow):
             if action:
                 action.setEnabled(self._edit_mode)
             else:
-                print(f"Action {action_name} does not exist.")
+                logger.error(f"Action {action_name} does not exist.")
 
     def connect_signals(self):
         # Connect EditBox signals to appropriate methods
@@ -219,13 +228,89 @@ class CharacterPicker(QtWidgets.QMainWindow):
 
     def handle_save_character(self):
         """Handle the 'Save Character' action from the menu."""
-        self.save_character()
+        # Prompt the user to select a save location
+        file_path, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self,
+            "Save Character As",
+            "",
+            "JSON Files (*.json)"
+        )
+        if not file_path:
+            return  # User canceled
+
+        # Gather current character data
+        character_data = self.tab_manager.gather_current_character_data()
+        if character_data is None:
+            QtWidgets.QMessageBox.warning(self, "Warning", "No character data to save.")
+            return
+
+        # Save the data using data_handler.py
+        try:
+            data.save_character_data(
+                file_path=file_path,
+                character_name=character_data["character_name"],
+                character_pic_filename=character_data["character_pic_filename"],
+                pages=character_data["pages"]
+            )
+            QtWidgets.QMessageBox.information(
+                self,
+                "Success",
+                f"Character '{character_data['character_name']}' saved successfully to:\n{file_path}"
+            )
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(
+                self,
+                "Error",
+                f"Failed to save character:\n{str(e)}"
+            )
 
     def handle_load_character(self):
         """Handle the 'Load Character' action from the menu."""
-        self.load_character()
+        # Prompt the user to select a JSON file
+        file_path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self,
+            "Load Character",
+            "",
+            "JSON Files (*.json)"
+        )
+        if not file_path:
+            return  # User canceled
 
-    def handle_add_page(self, page_name=None):
+        # Load the data using data_handler.py
+        try:
+            character_dict = data.load_character_data(file_path)
+            if not character_dict:
+                raise ValueError("Loaded data is empty.")
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(
+                self,
+                "Error",
+                f"Failed to load character:\n{str(e)}"
+            )
+            return
+
+        # Check if the character already exists to prevent duplicates
+        existing_characters = [self.tab_manager.tabText(i) for i in range(self.tab_manager.count() - 1)]
+        if character_dict["character_name"] in existing_characters:
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Warning",
+                f"A character named '{character_dict['character_name']}' already exists."
+            )
+            return
+
+        # Load the character into a new tab
+        try:
+            self.tab_manager.load_character_into_tab(character_dict)
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(
+                self,
+                "Error",
+                f"Failed to reconstruct character:\n{str(e)}"
+            )
+            return
+
+    def handle_add_page(self, page_name=None, background_image=""):
         """
         Handle adding a new page to the current tab.
         The first three pages are named 'Main', 'Face', and 'Prop' automatically.
@@ -241,10 +326,13 @@ class CharacterPicker(QtWidgets.QMainWindow):
         page_count = current_tab.stacked_widget.count()
         if page_count == 0:
             page_name = "Body"
+            background_image = str(self.icon_dir / "bodyBackground.svg")
         elif page_count == 1:
             page_name = "Face"
+            background_image = str(self.icon_dir / "faceBackground.svg")
         elif page_count == 2:
             page_name = "Prop"
+            background_image = str(self.icon_dir / "propBackground.svg")
         else:
             # Prompt for a name if no name is provided
             if not page_name:
@@ -256,7 +344,7 @@ class CharacterPicker(QtWidgets.QMainWindow):
                     return
 
         # Add the page to the current tab
-        self.tab_manager.add_page_to_current(page_name)
+        self.tab_manager.add_page_to_current(page_name, background_image)
 
     def handle_context_delete_button(self):
         """
@@ -286,7 +374,7 @@ class CharacterPicker(QtWidgets.QMainWindow):
         """Called when the menubar's 'Frame All' action is triggered."""
         current_grid = self.tab_manager.get_current_grid_widget()
         if not current_grid:
-            print("No valid grid to frame.")
+            logger.info(f"No valid grid to frame.")
             return
         # Call the grid's frame_all method
         current_grid.frame_all()
@@ -424,7 +512,7 @@ class CharacterPicker(QtWidgets.QMainWindow):
         # Update the styles so the new current page button is highlighted
         self.tab_manager.update_page_button_styles()
 
-        print("Current page removed successfully.")
+        logger.info(f"Current page removed successfully.")
 
     def resize_for_toolbox(self, is_open, height_change, is_top_level=False):
         """
@@ -439,7 +527,7 @@ class CharacterPicker(QtWidgets.QMainWindow):
 
         # Ensure height change is calculated properly
         if height_change == 0:
-            print("No height change detected.")
+            logger.info(f"No height change detected.")
             return
 
         if not is_open:
@@ -479,7 +567,7 @@ class CharacterPicker(QtWidgets.QMainWindow):
             #    btn = self.selected_picker_buttons[-1]
             #    self._update_picker_button(btn, data_dict)
             # OR 2) do nothing:
-            print("Multiple buttons selected, not sure which one to update. Doing nothing.")
+            logger.warning(f"Multiple buttons selected, not sure which one to update. Doing nothing.")
 
 
     def _create_picker_button(self, data_dict):
@@ -544,11 +632,11 @@ class CharacterPicker(QtWidgets.QMainWindow):
             btn.set_unselected_style()
             if btn.command_mode == "Select":
                 btn.deselect_objects()
-            print(f"{btn.text()} was toggled off.")
+            logger.info(f"{btn.text()} was toggled off.")
         else:
             self.selected_picker_buttons.append(btn)
             btn.set_selected_style()
-            print(f"{btn.text()} toggled ON")
+            logger.info(f"{btn.text()} toggled ON")
 
         self.update_toolbox_display()
 
@@ -561,7 +649,7 @@ class CharacterPicker(QtWidgets.QMainWindow):
             btn.set_unselected_style()
             if btn.command_mode == "Select":
                 btn.deselect_objects()
-            print(f"{btn.text()} forcibly removed from selection.")
+            logger.info(f"{btn.text()} forcibly removed from selection.")
         self.update_toolbox_display()
 
     def clear_multi_select(self):
@@ -605,7 +693,7 @@ class CharacterPicker(QtWidgets.QMainWindow):
                 # Exactly one
                 btn = self.selected_picker_buttons[0]
 
-        print(f"Attempting to delete picker button: {btn.text() if btn else 'None'}")
+        logger.info(f"Attempting to delete picker button: {btn.text() if btn else 'None'}")
 
         if not btn:
             QtWidgets.QMessageBox.warning(self, "Warning", "No button selected (or provided).")
@@ -622,8 +710,7 @@ class CharacterPicker(QtWidgets.QMainWindow):
         btn.setParent(None)
         btn.deleteLater()
 
-        print(f"Picker button '{btn.text()}' deleted successfully.")
-
+        logger.info(f"Picker button '{btn.text()}' deleted successfully.")
 
     def on_picker_button_event(self, event_type, btn, shift_pressed=False):
         """
@@ -638,7 +725,7 @@ class CharacterPicker(QtWidgets.QMainWindow):
                 btn.set_selected_style()
                 self.update_toolbox_display()
             self.add_button_to_multi_select(btn, shift_pressed=False)
-            print(f"[CharacterPicker] Received event '{event_type}' from button '{btn.text()}'")
+            logger.info(f"[CharacterPicker] Received event '{event_type}' from button '{btn.text()}'")
         elif event_type == "deselect":
             # Toggle off if SHIFT not pressed, or forcibly remove from selection
             self.remove_button_from_multi_select(btn)
@@ -646,16 +733,16 @@ class CharacterPicker(QtWidgets.QMainWindow):
             # Maybe update some fields in the EditBox if this is the selected button
             if btn in self.selected_picker_buttons:
                 self.update_toolbox_display()
-            print(f"[CharacterPicker] Received event '{event_type}' from button '{btn.text()}'")
+            logger.info(f"[CharacterPicker] Received event '{event_type}' from button '{btn.text()}'")
         elif event_type == "run_command":
             # The user clicked the button in Animate Mode          
             if btn.command_mode == "Select":
                 # So we can track it for toggling later
                 self.add_button_to_multi_select(btn, shift_pressed)           
-            print(f"Executing command for {btn.text()}")
+            logger.info(f"Executing command for {btn.text()}")
             btn.execute_command()  
         else:
-            print(f"Unknown picker event: {event_type} for button {btn.text() if btn else 'None'}")
+            logger.error(f"Unknown picker event: {event_type} for button {btn.text() if btn else 'None'}")
 
     def on_tab_changed(self, index):
         """
@@ -714,6 +801,8 @@ class CharacterPicker(QtWidgets.QMainWindow):
         else:
             self.edit_box.set_page_name_field("")
 
+        self.edit_box.update_page_fields()
+
         self._reconnect_grid_signals()
 
     def _reconnect_grid_signals(self):
@@ -725,7 +814,7 @@ class CharacterPicker(QtWidgets.QMainWindow):
 
         # 1) If the new_grid is exactly the same widget instance, do nothing
         if new_grid is self._connected_grid:
-            print("No change in grid. Skipping reconnection.")
+            logger.info(f"No change in grid. Skipping reconnection.")
             return
 
         # 2) If we had an old grid, disconnect it

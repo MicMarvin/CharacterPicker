@@ -1,7 +1,9 @@
+import logging
 from PySide2 import QtCore, QtWidgets, QtGui
 from PySide2 import QtSvg  # For rendering .svg files
 import CharacterPicker.Logic.picker as picker  # Adjust the import path as needed
 
+logger = logging.getLogger(__name__)
 
 class GridWidget(QtWidgets.QWidget):
     """
@@ -22,8 +24,10 @@ class GridWidget(QtWidgets.QWidget):
     # Define a signal to emit when the grid is panned
     grid_panned = QtCore.Signal()
     
-    def __init__(self, rows=None, cols=None, parent=None):
+    def __init__(self, rows=None, cols=None, parent=None, context_menu=None):
         super().__init__(parent)
+
+        self.context_menu = context_menu
 
         # Use defaults if no specific values are provided
         self.rows = rows or GridWidget.DEFAULT_ROWS
@@ -47,11 +51,12 @@ class GridWidget(QtWidgets.QWidget):
         self.setFocusPolicy(QtCore.Qt.StrongFocus)
         self.setMouseTracking(True)
 
-        # Background-related
-        self.bg_pixmap = None
+        # Initialize background attributes
+        self.bg_pixmap = None  # Ensure this is initialized
+        self.background_image = ""  # Path to the background image
+        self.bg_scale_factor = 1.0
         self.bg_offset_gx = 0.0
         self.bg_offset_gy = 0.0
-        self.bg_scale_factor = 1.0
 
         # Reposition any picker buttons once the widget is shown & sized
         QtCore.QTimer.singleShot(0, self.reposition_all_buttons)
@@ -79,74 +84,89 @@ class GridWidget(QtWidgets.QWidget):
         """
         if not image_path:
             self.bg_pixmap = None
+            self.background_image = ""
             self.update()
             return
 
-        def scale_and_set_image():
-            if self.width() > 0 and self.height() > 0:
-                if image_path.lower().endswith(".svg"):
-                    svg_renderer = QtSvg.QSvgRenderer(image_path)
-                    if not svg_renderer.isValid():
-                        print(f"Failed to load SVG: {image_path}")
-                        self.bg_pixmap = None
-                        self.update()
-                        return
+        # Store the background image path
+        self.background_image = image_path
 
-                    # 1) Get the intrinsic default size from the SVG
-                    default_size = svg_renderer.defaultSize()
-                    w = default_size.width()
-                    h = default_size.height()
+        # Proceed to load and scale the image
+        self.scale_and_set_image()
 
-                    # If the SVG doesn't report a default size, use a fallback
-                    if w < 1 or h < 1:
-                        w, h = 512, 512
+    def scale_and_set_image(self):
+        """
+        Scales and sets the background image based on the current widget size.
+        """
+        if self.width() > 0 and self.height() > 0:
+            image_path = self.background_image
+            if image_path.lower().endswith(".svg"):
+                svg_renderer = QtSvg.QSvgRenderer(image_path)
+                if not svg_renderer.isValid():
+                    logger.error(f"Failed to load SVG: {image_path}")
+                    self.bg_pixmap = None
+                    self.update()
+                    return
 
-                    # 2) Compare with the widget's size to find the best ratio
-                    widget_w = self.width()
-                    widget_h = self.height()
-                    ratio = min(widget_w / w, widget_h / h)
+                # Get the intrinsic default size from the SVG
+                default_size = svg_renderer.defaultSize()
+                w = default_size.width()
+                h = default_size.height()
 
-                    # 3) The target size to keep aspect ratio
-                    target_w = max(int(w * ratio), 1)
-                    target_h = max(int(h * ratio), 1)
+                # Fallback size if default size is invalid
+                if w < 1 or h < 1:
+                    w, h = 512, 512
+                    logger.warning(f"SVG '{image_path}' has invalid size. Using fallback size 512x512.")
 
-                    # Create a QImage of that target size
-                    temp_image = QtGui.QImage(target_w, target_h, QtGui.QImage.Format_ARGB32)
-                    temp_image.fill(QtCore.Qt.transparent)
+                # Calculate the best ratio
+                widget_w = self.width()
+                widget_h = self.height()
+                ratio = min(widget_w / w, widget_h / h)
 
-                    # Render the SVG at that size
-                    svg_painter = QtGui.QPainter(temp_image)
-                    svg_renderer.render(svg_painter)
-                    svg_painter.end()
+                # Target size to keep aspect ratio
+                target_w = max(int(w * ratio), 1)
+                target_h = max(int(h * ratio), 1)
 
-                    # Convert to QPixmap
-                    self.bg_pixmap = QtGui.QPixmap.fromImage(temp_image)
+                # Create a QImage of the target size
+                temp_image = QtGui.QImage(target_w, target_h, QtGui.QImage.Format_ARGB32)
+                temp_image.fill(QtCore.Qt.transparent)
 
-                else:
-                    # Raster image
-                    pixmap = QtGui.QPixmap(image_path)
-                    if not pixmap.isNull():
-                        self.bg_pixmap = pixmap.scaled(
-                            self.size(),
-                            QtCore.Qt.KeepAspectRatio,
-                            QtCore.Qt.SmoothTransformation
-                        )
-                    else:
-                        print(f"Failed to load raster image: {image_path}")
-                        self.bg_pixmap = None
+                # Render the SVG at the target size
+                svg_painter = QtGui.QPainter(temp_image)
+                svg_renderer.render(svg_painter)
+                svg_painter.end()
 
-                # Reset BG offsets + scale
-                self.bg_offset_gx = 0.0
-                self.bg_offset_gy = 0.0
-                self.bg_scale_factor = 1.0
+                # Convert to QPixmap
+                self.bg_pixmap = QtGui.QPixmap.fromImage(temp_image)
+                logger.info(f"SVG background image set: {image_path}")
 
-                self.update()
             else:
-                # Widget size not stable; retry scaling
-                print(f"Widget size not stable for {image_path}, retrying...")
-                QtCore.QTimer.singleShot(0, scale_and_set_image)
+                # Raster image
+                pixmap = QtGui.QPixmap(image_path)
+                if not pixmap.isNull():
+                    self.bg_pixmap = pixmap.scaled(
+                        self.size(),
+                        QtCore.Qt.KeepAspectRatio,
+                        QtCore.Qt.SmoothTransformation
+                    )
+                    logger.info(f"Raster background image set: {image_path}")
+                else:
+                    logger.error(f"Failed to load raster image: {image_path}")
+                    self.bg_pixmap = None
 
-        scale_and_set_image()
+            # Reset BG offsets + scale
+            self.bg_offset_gx = 0.0
+            self.bg_offset_gy = 0.0
+            self.bg_scale_factor = 1.0
+
+            self.update()
+
+            # Call `frame_all()` to ensure the image and buttons are framed properly
+            # self.frame_all()
+        else:
+            # Widget size not stable; retry scaling
+            logger.debug(f"Widget size not stable for {self.background_image}, retrying...")
+            QtCore.QTimer.singleShot(0, self.scale_and_set_image)
 
     def paintEvent(self, event):
         painter = QtGui.QPainter(self)
@@ -451,7 +471,7 @@ class GridWidget(QtWidgets.QWidget):
         else:
             btn_label = 'None'
 
-        print(f"[GridWidget] Received event '{event_type}' from button '{btn_label}', shift={shift_pressed}")
+        logger.info(f"[GridWidget] Received event '{event_type}' from button '{btn_label}', shift={shift_pressed}")
         # Forward the event upwards with the shift boolean
         self.picker_event.emit(event_type, btn, shift_pressed)
 

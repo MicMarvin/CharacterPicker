@@ -1,4 +1,48 @@
 {
-    "name": "New Character",
-    "pages": []
+    "character_name": "Jill",
+    "character_pic_filename": "E:\\python_projects\\Maya_Tools\\CharacterPicker\\Icons\\unknownWoman.svg",
+    "pages": [
+        {
+            "page_name": "Body",
+            "background_image": "E:\\python_projects\\Maya_Tools\\CharacterPicker\\Icons\\bodyBackground.svg",
+            "bg_scale_factor": 0.975,
+            "bg_offset_gx": 0.0,
+            "bg_offset_gy": 0.0,
+            "buttons": [
+                {
+                    "label": " ",
+                    "grid_pos": [
+                        0,
+                        8
+                    ],
+                    "size_in_cells": [
+                        1,
+                        1
+                    ],
+                    "shape": "rectangle",
+                    "color": "#f9aa26",
+                    "command_mode": "Python",
+                    "command_string": "QtWidgets.QMessageBox.information(sys.modules['character_picker_main_window'], 'Default Python Code', 'Hooray, it works!\\n\\nThe picker button ran this code.')",
+                    "opacity": 9,
+                    "direction": 0
+                }
+            ]
+        },
+        {
+            "page_name": "Face",
+            "background_image": "E:\\python_projects\\Maya_Tools\\CharacterPicker\\Icons\\faceBackground.svg",
+            "bg_scale_factor": 0.9685039370078741,
+            "bg_offset_gx": 0.0,
+            "bg_offset_gy": 0.0,
+            "buttons": []
+        },
+        {
+            "page_name": "Prop",
+            "background_image": "E:\\python_projects\\Maya_Tools\\CharacterPicker\\Icons\\propBackground.svg",
+            "bg_scale_factor": 0.9685039370078741,
+            "bg_offset_gx": 0.0,
+            "bg_offset_gy": 0.0,
+            "buttons": []
+        }
+    ]
 }

@@ -66,8 +66,6 @@ class MenuBar(QtWidgets.QMenuBar):
         file_menu.addAction(exit_action)
         exit_action.triggered.connect(self.main_window.close)
 
-        self.load_character_action.setEnabled(False)
-
         # Edit menu
         edit_menu = self.addMenu("Edit")
 

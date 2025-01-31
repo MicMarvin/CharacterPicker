@@ -1,8 +1,10 @@
 # picker.py
+import logging
 from PySide2 import QtCore, QtWidgets, QtGui
 import math
 import sys
 
+logger = logging.getLogger(__name__)
 
 class PickerButton(QtWidgets.QPushButton):
     """
@@ -176,7 +178,7 @@ class PickerButton(QtWidgets.QPushButton):
         
         # Check if the position is available
         if not self.grid_widget.is_position_available((grid_x, grid_y), exclude_btn=self):
-            print(f"Position ({grid_x}, {grid_y}) is already occupied. Cannot move '{self.text()}'.")
+            logger.info(f"Position ({grid_x}, {grid_y}) is already occupied. Cannot move '{self.text()}'.")
             return  # Or choose to find the nearest available position
 
         self.grid_widget.ensure_point_in_bounds(grid_x, grid_y)
@@ -428,7 +430,7 @@ class PickerButton(QtWidgets.QPushButton):
                     "__builtins__": __builtins__
                 }
                 exec(command, exec_globals)
-                print(f"Running Python command:\n{command}")
+                logger.info(f"Running Python command:\n{command}")
 
             elif mode == "MEL":
                 import maya.mel as mel
@@ -450,16 +452,16 @@ class PickerButton(QtWidgets.QPushButton):
                 # Assign picker window name to a global MEL variable
                 mel.eval(f'global string $pickerWindow = "{picker_window_name}";')
                 mel.eval(command)
-                print(f"Running MEL command:\n{command}")
+                logger.info(f"Running MEL command:\n{command}")
 
             elif mode == "Select":
                 self._select_objects()
 
             else:
-                print(f"No valid command mode specified for '{self.data_dict.get('label', 'Unnamed')}'.")
+                logger.warning(f"No valid command mode specified for '{self.data_dict.get('label', 'Unnamed')}'.")
 
         except Exception as e:
-            print(f"Error executing {mode} command: {e}")
+            logger.error(f"Error executing {mode} command: {e}")
 
     def _select_objects(self):
         """Select (and track) objects for this button in Animate Mode."""
@@ -468,7 +470,7 @@ class PickerButton(QtWidgets.QPushButton):
         objects = [obj.strip() for obj in self.command_string.split(",") if obj.strip()]
        
         if not objects:
-            print(f"No objects to select for '{self._label}'")
+            logger.error(f"No objects to select for '{self._label}'")
             return
 
         # Perform the selection
@@ -480,7 +482,7 @@ class PickerButton(QtWidgets.QPushButton):
         # Mark the button as "selected" visually
         self.set_selected_style()
 
-        print(f"Running Select command: {objects}")
+        logger.info(f"Running Select command: {objects}")
 
     def deselect_objects(self):
         """Deselect the objects this button had selected, if any."""
@@ -489,8 +491,9 @@ class PickerButton(QtWidgets.QPushButton):
             try:
                 cmds.select(self._selected_objects, deselect=True)
             except Exception as e:
-                print(f"Error deselecting objects: {e}")
+                logger.error(f"Error deselecting objects: {e}")
             self._selected_objects = []
+
 
 def create_picker_button(grid_widget, data_dict):
     """
@@ -501,7 +504,7 @@ def create_picker_button(grid_widget, data_dict):
         data_dict["color"] = QtGui.QColor(data_dict["color"])
 
     btn = PickerButton(data_dict=data_dict, grid_widget=grid_widget)
-    
+
     # Set grid_pos and size_in_cells using the property setters
     gx, gy = data_dict["grid_pos"]
     w, h = data_dict["size_in_cells"]
@@ -511,12 +514,12 @@ def create_picker_button(grid_widget, data_dict):
     # Set direction
     direction = data_dict.get("direction", 0)
     btn.direction = direction  # Setter ensures it's within -90 to +90
-    
+
     # Place & show
     btn.place_in_grid()
     btn.show()
 
-    # Connect the button's events to the grid or tab_manager
+    # Connect the button's events to the grid's handler
     btn.button_event.connect(grid_widget.handle_picker_button_event)
 
     return btn

@@ -6,10 +6,13 @@ import importlib
 
 importlib.reload(custom)
 
+import logging
+logger = logging.getLogger(__name__)
 
 class EditBox(QtWidgets.QGroupBox):
     def __init__(self, icon_dir, main_window=None, tab_manager=None, context_menu=None):
         super().__init__(main_window)
+        self.logger = logger
         self.icon_dir = icon_dir
         self.main_window = main_window
         self.tab_manager = tab_manager  # Store a reference to the tab_manager
@@ -72,14 +75,6 @@ class EditBox(QtWidgets.QGroupBox):
     def set_page_name_field(self, name):
         """Sets the page_name_input field to the given name."""
         self.page_name_input.setText(name or "")
-
-    def set_picker_label_field(self, label):
-        """Sets the picker_label_input field to the given label."""
-        self.picker_label_input.setText(label or "")
-
-    def set_character_pic_button_enabled(self, enabled: bool):
-        """Enable or disable the 'Set Character Picture' button."""
-        self.character_pic_button.setEnabled(enabled)
 
     # ------------------------
     #  Mouse Events
@@ -298,6 +293,52 @@ class EditBox(QtWidgets.QGroupBox):
                         page_button.setText(new_name)
                         break
 
+    def update_page_fields(self):
+        """Update the Page Settings fields with the current page's data."""
+        current_tab = self.tab_manager.currentWidget()
+
+        if not current_tab:
+            logger.warning("update_page_fields() called but no current tab is selected.")
+            return
+
+        if not hasattr(current_tab, "stacked_widget"):
+            logger.warning("update_page_fields() - current_tab is missing 'stacked_widget' attribute.")
+            return
+
+        current_page = current_tab.stacked_widget.currentWidget()
+
+        if not current_page:
+            logger.warning("update_page_fields() - No current page found.")
+            return
+
+        # Debugging: Log all attributes and their values
+        logger.debug(f"update_page_fields() - Current page attributes and values: {vars(current_page)}")
+
+        # --- Update Background Image ---
+        if hasattr(current_page, "background_image"):
+            bg_image = current_page.background_image
+            logger.debug(f"update_page_fields() - Raw background_image value: {bg_image} (Type: {type(bg_image)})")
+
+            if bg_image:  # Ensure it's not None or empty
+                bg_filename = os.path.basename(str(bg_image))
+                self.bg_label.setText(bg_filename)
+                logger.info(f"update_page_fields() - Background image updated: {bg_filename}")
+            else:
+                self.bg_label.setText("None")
+                logger.warning("update_page_fields() - Background image is None or empty.")
+        else:
+            logger.warning("update_page_fields() - 'background_image' attribute is missing from the current page.")
+
+        # --- Update Scale Factor ---
+        if hasattr(current_page, "bg_scale_factor"):
+            scale_factor = current_page.bg_scale_factor
+            logger.debug(f"update_page_fields() - Raw bg_scale_factor value: {scale_factor}")
+
+            self.bg_scale_slider.setValue(int(scale_factor * 50))
+            logger.info(f"update_page_fields() - Scale factor updated: {scale_factor}")
+        else:
+            logger.warning("update_page_fields() - 'bg_scale_factor' attribute is missing from the current page.")
+
     def on_bg_scale_changed(self, value):
         """Update the background scale factor based on the slider value."""
         current_tab = self.tab_manager.currentWidget()
@@ -311,6 +352,7 @@ class EditBox(QtWidgets.QGroupBox):
         Delegate setting the background to CharacterPicker.
         """
         self.tab_manager.set_current_page_background(image_path)
+        self.update_page_fields()  # Ensure fields update immediately
 
     def nudge_bg_left(self):
         current_tab = self.tab_manager.currentWidget()
@@ -588,7 +630,7 @@ class EditBox(QtWidgets.QGroupBox):
         else:
             if external_grid_pos is not None:
                 # Print a warning if external_grid_pos is something other than None or tuple
-                print(f"[WARNING] external_grid_pos is not a tuple (type: {type(external_grid_pos)}) => ignoring override")
+                logger.warning(f"[WARNING] external_grid_pos is not a tuple (type: {type(external_grid_pos)}) => ignoring override")
 
         # Submit
         self.main_window.submit_picker(data_dict)

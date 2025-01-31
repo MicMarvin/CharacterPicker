@@ -1,5 +1,6 @@
 from PySide2 import QtWidgets, QtCore, QtGui
 import os
+import logging
 import CharacterPicker.Gui.custom_widgets as custom
 import CharacterPicker.Utility.utils as utils
 import CharacterPicker.Logic.grid_widget as grid
@@ -11,12 +12,14 @@ importlib.reload(utils)
 importlib.reload(grid)
 importlib.reload(picker)
 
+logger = logging.getLogger(__name__)
 
 class PageButtonFrame(QtWidgets.QFrame):
     def __init__(self, icon_dir, context_menu, character_picker, parent=None):
         super().__init__(parent)
+        self.logger = logger
         self.icon_dir = icon_dir
-        self.context_menu = context_menu  # Pass the shared context menu
+        self.context_menu = context_menu
         self.character_picker = character_picker
 
         # Main horizontal layout
@@ -41,11 +44,11 @@ class PageButtonFrame(QtWidgets.QFrame):
         """)
 
         # Set the icon for the button
-        icon_path = os.path.join(self.icon_dir, "plus.svg")
-        if os.path.exists(icon_path):
-            self.add_page_button.setIcon(QtGui.QIcon(icon_path))
+        icon_path = self.icon_dir / "plus.svg"  # Keep it as a Path object
+        if icon_path.exists():  # Check existence using Path
+            self.add_page_button.setIcon(QtGui.QIcon(str(icon_path)))  # Convert to string when needed
         else:
-            print(f"Icon file not found: {icon_path}")
+           logger.error(f"Icon file not found: {icon_path}")
 
         self.add_page_button.clicked.connect(self.handle_add_page_clicked)
         self.main_layout.addWidget(self.add_page_button)
@@ -67,7 +70,7 @@ class PageButtonFrame(QtWidgets.QFrame):
         if hasattr(self.character_picker, 'handle_add_page'):
             self.character_picker.handle_add_page()
         else:
-            print("CharacterPicker does not have 'handle_add_page' method.")
+            logger.error(f"CharacterPicker does not have 'handle_add_page' method.")
 
 
 class TabManager(QtWidgets.QTabWidget):
@@ -94,6 +97,17 @@ class TabManager(QtWidgets.QTabWidget):
         self.add_character_tab("Character 1")
         self.add_character_tab()  # Add the "Add Character Tab"
 
+    def mousePressEvent(self, event):
+        if event.button() == QtCore.Qt.RightButton:
+            # Check if the click occurred on the tab bar
+            if self.tabBar().rect().contains(event.pos()):
+                self.context_menu.set_context_type('tab_bar')
+                self.context_menu.exec_(event.globalPos())
+            else:
+                super().mousePressEvent(event)
+        else:
+            super().mousePressEvent(event)
+    
     def _on_stacked_widget_changed(self, index):
         """
         This internal method is called whenever the QStackedWidget changes pages.
@@ -101,7 +115,7 @@ class TabManager(QtWidgets.QTabWidget):
         """
         self.currentPageChanged.emit(index)
 
-    def add_character_tab(self, character_name=None):
+    def add_character_tab(self, character_name=None, character_pic_path=""):
         """
         Create and add a new character tab to the TabManager.
         If character_name is None, adds the "NEW" placeholder tab.
@@ -117,7 +131,7 @@ class TabManager(QtWidgets.QTabWidget):
             layout.addWidget(label)
 
             # Use the plus.svg icon
-            icon_path = os.path.join(self.icon_dir, "plus.svg")
+            icon_path = str(self.icon_dir / "plus.svg")
             icon = QtGui.QIcon(icon_path)
             self.setIconSize(QtCore.QSize(50, 50))
 
@@ -142,7 +156,7 @@ class TabManager(QtWidgets.QTabWidget):
                     image_path = utils.get_random_icon()
 
                 if not os.path.exists(image_path):
-                    print(f"Icon path does not exist: {image_path}")
+                    logger.warning(f"Icon path does not exist: {image_path}")
                     icon = QtGui.QIcon()  # Default icon
                 else:
                     icon = QtGui.QIcon(image_path)
@@ -152,7 +166,7 @@ class TabManager(QtWidgets.QTabWidget):
                     # Update the tab’s icon
                     self.setTabIcon(tab_index, icon)
                 else:
-                    print("Character tab not found in TabManager.")
+                    logger.error(f"Character tab not found in TabManager.")
 
                 character_tab.character_pic_path = image_path
 
@@ -209,15 +223,13 @@ class TabManager(QtWidgets.QTabWidget):
             original_icon = character_tab.set_tab_icon()  # image_path=None to get a random icon
             self.setTabIcon(tab_index, original_icon)
 
-            # Create the default "Main" page by calling add_page_to_current
-            self.add_page_to_current("Body")
-
             # Set the background image for the first page
-            default_image_path = os.path.join(self.icon_dir, "bodyBackground.svg")
-            QtCore.QTimer.singleShot(0, lambda:self.set_current_page_background(default_image_path))
+            default_image_path = str(self.icon_dir / "bodyBackground.svg")
+            self.add_page_to_current("Body", default_image_path)
 
             self.update_page_button_styles()
 
+            return self.indexOf(character_tab)
 
     def on_tab_bar_clicked(self, index):
         if index == self.count() - 1:
@@ -289,46 +301,65 @@ class TabManager(QtWidgets.QTabWidget):
         elif event_type == "deselect":
             self.parent().update_picker_button_fields(None)
 
-    def add_page_to_current(self, page_name):
+    def add_page_to_current(self, page_name, background_image="", bg_scale_factor=1.0, bg_offset=(0.0, 0.0)):
         """
-        Add a new sub-page (GridWidget) to the current character tab.
-        Create a new QPushButton in the page_button_layout to switch to it.
+        Add a new sub-page (GridWidget) to the current character tab with optional background settings.
         """
         current_tab = self.currentWidget()
         if not current_tab or not hasattr(current_tab, "stacked_widget"):
-            QtWidgets.QMessageBox.warning(self, "Warning", "No valid character tab selected.")
+            QtWidgets.QMessageBox.warning(self.character_picker, "Warning", "No valid character tab selected.")
             return
 
         if not page_name.strip():
             QtWidgets.QMessageBox.warning(self, "Warning", "Page name cannot be empty.")
             return
 
-        # Create a new page (GridWidget)
-        new_page = grid.GridWidget(rows=grid.GridWidget.DEFAULT_ROWS, cols=grid.GridWidget.DEFAULT_COLS)
-        new_page.context_menu = self.context_menu
-
-        # Assign an attribute page_name to this page so the EditBox can see it
+        # Create a new GridWidget (page)
+        new_page = grid.GridWidget(rows=grid.GridWidget.DEFAULT_ROWS, cols=grid.GridWidget.DEFAULT_COLS, parent=current_tab, context_menu=self.context_menu)
         new_page.page_name = page_name
+        new_page.background_image = background_image  # Store background image path
 
+        # Set background image, scale, and offset if provided
+        if background_image:
+            QtCore.QTimer.singleShot(0, lambda:new_page.set_background_image(background_image))
+        new_page.bg_scale_factor = bg_scale_factor
+        new_page.bg_offset_gx, new_page.bg_offset_gy = bg_offset
+
+        # Add the page to the stacked_widget
         current_tab.stacked_widget.addWidget(new_page)
 
-        # Create a button to switch to this new page
+        # Create a navigation button for the new page
         page_button = QtWidgets.QPushButton(page_name)
-        page_button.clicked.connect(
-            lambda checked=False, page=new_page:(
-                current_tab.stacked_widget.setCurrentWidget(page),
-                self.update_page_button_styles()
-            )
-        )
+        page_button.setFixedHeight(40)  # Adjust as needed
+        # Set font to bold
+        font = QtGui.QFont()
+        font.setBold(True)
+        font.setPointSize(12)  # Adjust font size as needed
+        page_button.setFont(font)
+        page_button.clicked.connect(lambda *args, page=new_page: self.switch_to_page(page))
 
-        # Add the new button to the dynamic buttons layout
+        # Add the button to the dynamic_buttons_layout
         current_tab.page_button_frame.add_dynamic_button(page_button)
 
         # Store the reference in page_buttons dict
         current_tab.page_buttons[page_button] = new_page
 
-        # Switch immediately to the new page
+        # Switch to the new page
         current_tab.stacked_widget.setCurrentWidget(new_page)
+        self.update_page_button_styles()
+
+        # Using logger instead of print
+        logger.info(f"Page '{page_name}' added successfully.")
+
+
+    def switch_to_page(self, page_widget):
+        """
+        Switch the current view to the specified page_widget.
+        """
+        current_tab = self.currentWidget()
+        if not current_tab:
+            return
+        current_tab.stacked_widget.setCurrentWidget(page_widget)
         self.update_page_button_styles()
 
     def set_current_page_background(self, image_path=None):
@@ -353,14 +384,129 @@ class TabManager(QtWidgets.QTabWidget):
         else:
             QtWidgets.QMessageBox.warning(self, "Warning", "No valid page is selected.")
 
-    def mousePressEvent(self, event):
-        if event.button() == QtCore.Qt.RightButton:
-            # Check if the click occurred on the tab bar
-            if self.tabBar().rect().contains(event.pos()):
-                self.context_menu.set_context_type('tab_bar')
-                self.context_menu.exec_(event.globalPos())
-            else:
-                super().mousePressEvent(event)
-        else:
-            super().mousePressEvent(event)
+    def gather_current_character_data(self):
+        """
+        Gathers all data from the currently selected character tab.
+        Returns a dictionary matching the JSON structure.
+        """
+        current_index = self.currentIndex()
+        if current_index == -1:
+            QtWidgets.QMessageBox.warning(self, "Warning", "No character tab is currently selected.")
+            return None
 
+        # Prevent saving the "NEW" tab
+        if current_index == self.count() - 1:
+            QtWidgets.QMessageBox.warning(self, "Warning", "Cannot save the 'NEW' tab.")
+            return None
+
+        current_tab = self.widget(current_index)
+        character_name = self.tabText(current_index)
+        character_pic_filename = getattr(current_tab, "character_pic_path", "")
+
+        # Gather pages data from stacked_widget
+        pages_dict = {}
+        stacked_widget = getattr(current_tab, "stacked_widget", None)
+        if not stacked_widget:
+            QtWidgets.QMessageBox.warning(self, "Warning", "Current tab does not contain any pages.")
+            return None
+
+        for page_index in range(stacked_widget.count()):
+            page_widget = stacked_widget.widget(page_index)
+            page_name = getattr(page_widget, "page_name", f"Page {page_index + 1}")
+            background_image = getattr(page_widget, "background_image", "")
+            bg_scale_factor = getattr(page_widget, "bg_scale_factor", 1.0)
+            bg_offset_gx = getattr(page_widget, "bg_offset_gx", 0.0)
+            bg_offset_gy = getattr(page_widget, "bg_offset_gy", 0.0)
+
+            # Gather picker buttons from the GridWidget
+            buttons_data = []
+            for btn in page_widget.findChildren(picker.PickerButton):
+                btn_data = {
+                    "label": btn.data_dict.get("label", ""),
+                    "grid_pos": list(btn.grid_pos),
+                    "size_in_cells": list(btn.size_in_cells),
+                    "shape": btn.shape,
+                    "color": btn.color.name(QtGui.QColor.HexRgb),
+                    "command_mode": btn.command_mode,
+                    "command_string": btn.command_string,
+                    "opacity": btn.opacity,
+                    "direction": btn.direction
+                }
+                buttons_data.append(btn_data)
+
+            pages_dict[page_name] = {
+                "page_name": page_name,
+                "background_image": background_image,
+                "bg_scale_factor": bg_scale_factor,
+                "bg_offset_gx": bg_offset_gx,
+                "bg_offset_gy": bg_offset_gy,
+                "buttons": buttons_data
+            }
+
+        # Construct the final data dictionary
+        character_data = {
+            "character_name": character_name,
+            "character_pic_filename": character_pic_filename,
+            "pages": list(pages_dict.values())
+        }
+
+        return character_data
+
+    def _gather_buttons_from_grid(self, page_obj):
+        """
+        Extracts data from all picker buttons within the given page's GridWidget.
+        Returns a list of button dictionaries.
+        """
+        button_list = []
+        for btn in page_obj.grid_widget.findChildren(picker.PickerButton):
+            btn_data = btn.data_dict.copy()
+            btn_data["color"] = btn.color.name()  # Ensure color is stored as hex string
+            button_list.append(btn_data)
+        return button_list
+
+    def load_character_into_tab(self, character_dict):
+        """
+        Loads character data from a dictionary and populates a new character tab.
+        """
+        character_name = character_dict.get("character_name", "Unnamed Character")
+        character_pic_filename = character_dict.get("character_pic_filename", "")
+
+        # Add a new character tab
+        new_tab_index = self.add_character_tab(character_name, character_pic_filename)
+        new_tab = self.widget(new_tab_index)
+        new_tab.character_pic_path = character_pic_filename
+
+        # Populate pages
+        for page_info in character_dict.get("pages", []):
+            page_name = page_info.get("page_name", "Unnamed Page")
+            background_image = page_info.get("background_image", "")
+            bg_scale_factor = page_info.get("bg_scale_factor", 1.0)
+            bg_offset = (page_info.get("bg_offset_gx", 0), page_info.get("bg_offset_gy", 0))
+
+            # Create a new Page instance
+            new_page = Page(
+                page_name=page_name,
+                background_image=background_image,
+                bg_scale_factor=bg_scale_factor,
+                bg_offset=bg_offset,
+                parent=new_tab
+            )
+
+            # Add the page to the stacked widget
+            new_tab.stacked_widget.addWidget(new_page)
+            new_tab.pages[page_name] = new_page
+
+            # Optionally, add a navigation button for the page
+            # Assuming you have a method to add page buttons
+            # self.add_page_button(new_tab, page_name)
+
+            # Populate picker buttons
+            for btn_info in page_info.get("buttons", []):
+                # Create picker button with btn_info
+                picker.create_picker_button(new_page.grid_widget, btn_info)
+
+        QtWidgets.QMessageBox.information(
+            self.character_picker,
+            "Success",
+            f"Character '{character_name}' loaded successfully."
+        )

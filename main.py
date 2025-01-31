@@ -1,13 +1,16 @@
 # main.py
+import logging
 from PySide2 import QtCore, QtWidgets, QtGui
 import maya.OpenMayaUI as omui
 from shiboken2 import wrapInstance
 
+import CharacterPicker.Utility.logging_setup as logging_setup
 import CharacterPicker.Gui.main_window as main
 
 import importlib
 importlib.reload(main)
 
+logger = logging.getLogger(__name__)
 
 def maya_main_window():
     """Return Maya's main window widget (in Maya)."""
@@ -32,7 +35,8 @@ def show_character_picker():
         sys.modules['character_picker_main_window'] = picker_window
 
     except Exception as e:
-        print(f"Failed to launch Character Picker: {e}")
+        logger.error(f"Failed to launch Character Picker: {e}")
+        
 
 if __name__ == "__main__":
     show_character_picker()
