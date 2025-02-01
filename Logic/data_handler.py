@@ -19,23 +19,22 @@ def save_character_data(file_path, character_name, character_pic_filename, pages
             "bg_scale_factor": page_data["bg_scale_factor"],
             "bg_offset_gx": page_data["bg_offset_gx"],
             "bg_offset_gy": page_data["bg_offset_gy"],
+            "cell_size": page_data.get("cell_size", 40),  # Save the current grid cell size (default to 40 if missing)
             "buttons": []
         }
-        # Each "buttons" entry is typically a list of dicts with label, grid_pos, etc.
         for btn in page_data["buttons"]:
             button_dict = {
                 "label": btn["label"],
-                "grid_pos": list(btn["grid_pos"]),        # (x, y) -> [x, y]
+                "grid_pos": list(btn["grid_pos"]),
                 "size_in_cells": list(btn["size_in_cells"]),
                 "shape": btn["shape"],
-                "color": btn["color"],                   # e.g. "#f9aa26"
-                "command_mode": btn["command_mode"],     # e.g. "Select" or "Python"
+                "color": btn["color"],
+                "command_mode": btn["command_mode"],
                 "command_string": btn["command_string"],
-                "opacity": btn["opacity"],               # int
-                "direction": btn["direction"]            # int/float
+                "opacity": btn["opacity"],
+                "direction": btn["direction"]
             }
             page_entry["buttons"].append(button_dict)
-
         data["pages"].append(page_entry)
 
     with open(file_path, "w") as f:

@@ -154,10 +154,10 @@ class GridWidget(QtWidgets.QWidget):
                     logger.error(f"Failed to load raster image: {image_path}")
                     self.bg_pixmap = None
 
-            # Reset BG offsets + scale
-            self.bg_offset_gx = 0.0
-            self.bg_offset_gy = 0.0
-            self.bg_scale_factor = 1.0
+            # # Reset BG offsets + scale
+            # self.bg_offset_gx = 0.0
+            # self.bg_offset_gy = 0.0
+            # self.bg_scale_factor = 1.0
 
             self.update()
 

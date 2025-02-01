@@ -21,6 +21,7 @@ importlib.reload(context)
 importlib.reload(grid)
 importlib.reload(custom)
 importlib.reload(picker)
+importlib.reload(data)
 
 import logging
 logger = logging.getLogger(__name__)

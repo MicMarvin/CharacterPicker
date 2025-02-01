@@ -403,7 +403,6 @@ class TabManager(QtWidgets.QTabWidget):
         character_name = self.tabText(current_index)
         character_pic_filename = getattr(current_tab, "character_pic_path", "")
 
-        # Gather pages data from stacked_widget
         pages_dict = {}
         stacked_widget = getattr(current_tab, "stacked_widget", None)
         if not stacked_widget:
@@ -418,7 +417,10 @@ class TabManager(QtWidgets.QTabWidget):
             bg_offset_gx = getattr(page_widget, "bg_offset_gx", 0.0)
             bg_offset_gy = getattr(page_widget, "bg_offset_gy", 0.0)
 
-            # Gather picker buttons from the GridWidget
+            # **Include the current grid cell size (zoom level)**
+            cell_size = getattr(page_widget, "cell_size", 40)
+            logger.info(f"Cell size for page '{page_name}': {cell_size}")   
+
             buttons_data = []
             for btn in page_widget.findChildren(picker.PickerButton):
                 btn_data = {
@@ -440,10 +442,10 @@ class TabManager(QtWidgets.QTabWidget):
                 "bg_scale_factor": bg_scale_factor,
                 "bg_offset_gx": bg_offset_gx,
                 "bg_offset_gy": bg_offset_gy,
+                "cell_size": cell_size,
                 "buttons": buttons_data
             }
 
-        # Construct the final data dictionary
         character_data = {
             "character_name": character_name,
             "character_pic_filename": character_pic_filename,
@@ -465,48 +467,95 @@ class TabManager(QtWidgets.QTabWidget):
         return button_list
 
     def load_character_into_tab(self, character_dict):
-        """
-        Loads character data from a dictionary and populates a new character tab.
-        """
         character_name = character_dict.get("character_name", "Unnamed Character")
         character_pic_filename = character_dict.get("character_pic_filename", "")
 
-        # Add a new character tab
+        # Create a new character tab using your existing routine.
         new_tab_index = self.add_character_tab(character_name, character_pic_filename)
         new_tab = self.widget(new_tab_index)
         new_tab.character_pic_path = character_pic_filename
 
-        # Populate pages
+        # Update the tab icon to use the saved profile picture.
+        try:
+            new_tab.set_tab_icon(character_pic_filename)
+        except Exception as e:
+            logger.error(f"Error setting tab icon: {e}")  
+
+        # **** Remove all existing pages and clear navigation buttons ****
+        while new_tab.stacked_widget.count() > 0:
+            widget = new_tab.stacked_widget.widget(0)
+            new_tab.stacked_widget.removeWidget(widget)
+            widget.deleteLater()
+        
+        # Also clear the navigation buttons from the page button frame:
+        layout = new_tab.page_button_frame.dynamic_buttons_layout
+        while layout.count():
+            item = layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        # Clear the page_buttons dictionary
+        new_tab.page_buttons = {}
+
+        # Iterate over saved pages
         for page_info in character_dict.get("pages", []):
             page_name = page_info.get("page_name", "Unnamed Page")
             background_image = page_info.get("background_image", "")
             bg_scale_factor = page_info.get("bg_scale_factor", 1.0)
             bg_offset = (page_info.get("bg_offset_gx", 0), page_info.get("bg_offset_gy", 0))
+            saved_cell_size = page_info.get("cell_size", 40)  # Retrieve saved cell size
 
-            # Create a new Page instance
-            new_page = Page(
-                page_name=page_name,
-                background_image=background_image,
-                bg_scale_factor=bg_scale_factor,
-                bg_offset=bg_offset,
-                parent=new_tab
+            # Create a new page using GridWidget.
+            new_page = grid.GridWidget(
+                rows=grid.GridWidget.DEFAULT_ROWS,
+                cols=grid.GridWidget.DEFAULT_COLS,
+                parent=new_tab,
+                context_menu=self.context_menu
             )
+            new_page.page_name = page_name
+            new_page.background_image = background_image
+            new_page.bg_scale_factor = bg_scale_factor
+            new_page.bg_offset_gx, new_page.bg_offset_gy = bg_offset
 
-            # Add the page to the stacked widget
+            # Restore the saved grid cell size (zoom level)
+            new_page.cell_size = saved_cell_size
+
+            # Use a timer to set the background image so that the correct value is captured.
+            if background_image:
+                QtCore.QTimer.singleShot(
+                    0, lambda bg=background_image, page=new_page: page.set_background_image(bg)
+                )
+
+            # Add the new page to the stacked widget.
             new_tab.stacked_widget.addWidget(new_page)
-            new_tab.pages[page_name] = new_page
 
-            # Optionally, add a navigation button for the page
-            # Assuming you have a method to add page buttons
-            # self.add_page_button(new_tab, page_name)
+            # Create a navigation button for this page.
+            page_button = QtWidgets.QPushButton(page_name)
+            page_button.setFixedHeight(40)
+            font = QtGui.QFont()
+            font.setBold(True)
+            font.setPointSize(12)
+            page_button.setFont(font)
+            page_button.clicked.connect(lambda *args, page=new_page: self.switch_to_page(page))
+            new_tab.page_button_frame.add_dynamic_button(page_button)
+            new_tab.page_buttons[page_button] = new_page
 
-            # Populate picker buttons
+            # Recreate picker buttons on this page.
             for btn_info in page_info.get("buttons", []):
-                # Create picker button with btn_info
-                picker.create_picker_button(new_page.grid_widget, btn_info)
+                picker.create_picker_button(new_page, btn_info)
 
-        QtWidgets.QMessageBox.information(
-            self.character_picker,
-            "Success",
-            f"Character '{character_name}' loaded successfully."
-        )
+        # Set the current page to the first one.
+        if new_tab.stacked_widget.count() > 0:
+            new_tab.stacked_widget.setCurrentIndex(0)
+
+        self.update_page_button_styles()
+
+        current_tab = self.currentWidget()
+        for i in range(current_tab.stacked_widget.count()):
+            page = current_tab.stacked_widget.widget(i)
+            # Force the page to match the current tab’s size (or another appropriate size)
+            page.resize(current_tab.size())
+            page.reposition_all_buttons()
+            page.update()
+
+        logger.info(f"Character '{character_name}' loaded successfully.")  
