@@ -396,12 +396,60 @@ class PickerButton(QtWidgets.QPushButton):
         text_color = QtGui.QColor("#000000") if brightness > 186 else QtGui.QColor("#FFFFFF")
 
         painter.setPen(text_color)
-        painter.drawText(self.rect(), QtCore.Qt.AlignCenter, self.data_dict["label"])
 
-        # Restore the painter state
+        # --- DYNAMIC TEXT LOGIC ---
+        # 1) Approximate the shape’s bounding box (already adjusted for rotation above)
+        shape_x = int(x)
+        shape_y = int(y)
+        shape_width = adjusted_width
+        shape_height = adjusted_height
+
+        # 2) Determine usable area within that shape (padding on all sides)
+        padding = 6
+        usable_width = shape_width - 2 * padding
+        usable_height = shape_height - 2 * padding
+
+        if usable_width <= 0 or usable_height <= 0:
+            # Shape is too small for any text => skip
+            pass
+        else:
+            # 3) Find the largest font size that can fit the label text in this area
+            text = self._label  # or self.data_dict["label"]
+            max_size = self._compute_max_font_size(painter, text, usable_width, usable_height)
+
+            # Optional: require at least size=6 to avoid very tiny unreadable text
+            if max_size < 6:
+                # Omit text if shape is too small
+                pass
+            else:
+                # 4) Set up the painter font
+                font = painter.font()
+                font.setPointSize(max_size)
+                if max_size >= 12:
+                    font.setBold(True)
+                painter.setFont(font)
+
+                # 5) Create a QRectF for drawText and optionally shift horizontally
+                rect = QtCore.QRectF(
+                    shape_x + padding,
+                    shape_y + padding,
+                    usable_width,
+                    usable_height
+                )
+                horizontal_offset = -4  # negative => push text left a bit
+                rect.adjust(horizontal_offset, 0, horizontal_offset, 0)
+
+                # 6) Let Qt center text horizontally & vertically inside rect
+                painter.drawText(
+                    rect,
+                    QtCore.Qt.AlignCenter | QtCore.Qt.AlignVCenter,
+                    text
+                )
+
+        # Clean up
         painter.restore()
-
         painter.end()
+
 
     def _lighten_color(self, color, factor=0.2):
         """
@@ -496,6 +544,34 @@ class PickerButton(QtWidgets.QPushButton):
                 logger.error(f"Error deselecting objects: {e}")
             self._selected_objects = []
 
+    def _compute_max_font_size(self, painter, text, max_width, max_height):
+        """
+        Given a QPainter, some text, and a bounding box (max_width, max_height),
+        find the largest integer font point size that keeps the text within that box
+        (using simple boundingRect logic).
+        Returns 0 if no size fits (meaning shape is too small).
+        """
+
+        best_size = 0
+        low, high = 1, 200  # some max upper limit for point size
+        while low <= high:
+            mid = (low + high) // 2
+            test_font = QtGui.QFont(painter.font())
+            test_font.setPointSize(mid)
+
+            fm = QtGui.QFontMetrics(test_font)
+            # We ask boundingRect how big the text would be in that font
+            bounds = fm.boundingRect(0, 0, max_width, max_height,
+                                    QtCore.Qt.AlignCenter, text)
+
+            if bounds.width() <= max_width and bounds.height() <= max_height:
+                best_size = mid
+                low = mid + 1  # try bigger
+            else:
+                high = mid - 1  # too large, try smaller
+
+        return best_size
+    
 
 def create_picker_button(grid_widget, data_dict):
     """
