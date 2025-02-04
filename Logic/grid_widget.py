@@ -9,7 +9,7 @@ class GridWidget(QtWidgets.QWidget):
     """
     A widget that draws a center-based grid with negative/positive coordinates.
     The background image can be placed at an offset (in grid coords),
-    and has its own scale factor (bg_scale_factor) independent of cell_size.
+    and has its own scale factor (bg_size_in_cells) independent of cell_size.
     """
     # Shared configuration for all grid widgets
     DEFAULT_ROWS = 200
@@ -34,6 +34,11 @@ class GridWidget(QtWidgets.QWidget):
         self.cols = cols or GridWidget.DEFAULT_COLS
         self.cell_size = GridWidget.DEFAULT_CELL_SIZE
 
+        # Add a flag to allow one-time automatic adjustment.
+        self.auto_adjust = True
+
+        self.loaded = False   # Indicates this page was loaded from saved data
+
         # Initialize min/max from rows/cols
         self.min_x = -(self.cols // 2)
         self.max_x = (self.cols // 2)
@@ -52,14 +57,17 @@ class GridWidget(QtWidgets.QWidget):
         self.setMouseTracking(True)
 
         # Initialize background attributes
-        self.bg_pixmap = None  # Ensure this is initialized
+        self.frozen_bg_pixmap = None
+        self.bg_pixmap = None  
         self.background_image = ""  # Path to the background image
-        self.bg_scale_factor = 1.0
+        self.bg_size_in_cells = [int(self.width()/self.cell_size), int(self.height()/self.cell_size)]
         self.bg_offset_gx = 0.0
         self.bg_offset_gy = 0.0
 
         # Reposition any picker buttons once the widget is shown & sized
         QtCore.QTimer.singleShot(0, self.reposition_all_buttons)
+
+        self.framed = False   # Will be set to True when the page has been explicitly framed.
 
     @property
     def edit_mode(self):
@@ -75,98 +83,84 @@ class GridWidget(QtWidgets.QWidget):
             return top_level.edit_mode
         return False
 
-    def set_background_image(self, image_path):
+    def load_background_image(self):
         """
-        Load a background image from the given file path.
-        If .svg, scale once to fit the widget (KeepAspectRatio) at load time.
-        If raster, do the same with pixmap.scaled(...).
-        Then store it in self.bg_pixmap.
+        Loads the background image from self.background_image
+        without altering its size, so that later scaling is driven
+        solely by bg_size_in_cells and cell_size.
         """
+        if not self.background_image:
+            self.bg_pixmap = None
+            self.update()
+            return
+
+        image_path = self.background_image
+        if image_path.lower().endswith(".svg"):
+            svg_renderer = QtSvg.QSvgRenderer(image_path)
+            if not svg_renderer.isValid():
+                logger.error(f"Failed to load SVG: {image_path}")
+                self.bg_pixmap = None
+                self.update()
+                return
+            default_size = svg_renderer.defaultSize()
+            w = default_size.width()
+            h = default_size.height()
+            if w < 1 or h < 1:
+                w, h = 512, 512
+                logger.warning(f"SVG '{image_path}' has invalid size. Using fallback size 512x512.")
+            # Do not scale here; load intrinsic size.
+            temp_image = QtGui.QImage(w, h, QtGui.QImage.Format_ARGB32)
+            temp_image.fill(QtCore.Qt.transparent)
+            svg_painter = QtGui.QPainter(temp_image)
+            svg_renderer.render(svg_painter)
+            svg_painter.end()
+            self.bg_pixmap = QtGui.QPixmap.fromImage(temp_image)
+            logger.info(f"SVG background image loaded (intrinsic size): {image_path}")
+        else:
+            pixmap = QtGui.QPixmap(image_path)
+            if not pixmap.isNull():
+                # Load without scaling.
+                self.bg_pixmap = pixmap
+                logger.info(f"Raster background image loaded (intrinsic size): {image_path}")
+            else:
+                logger.error(f"Failed to load raster image: {image_path}")
+                self.bg_pixmap = None
+        self.update()
+
+    def set_background_image(self, image_path, apply_scaling=True):
         if not image_path:
             self.bg_pixmap = None
             self.background_image = ""
             self.update()
             return
 
-        # Store the background image path
         self.background_image = image_path
-
-        # Proceed to load and scale the image
-        self.scale_and_set_image()
-
-    def scale_and_set_image(self):
+        # Load the image intrinsically.
+        self.load_background_image()
+        if apply_scaling:
+            # For a new page, set bg_size_in_cells to fill the widget:
+            self.bg_size_in_cells = [int(self.width()/self.cell_size), int(self.height()/self.cell_size)]
+            # Scale the image accordingly.
+            self.scale_background_image()
+            
+    def scale_background_image(self):
         """
-        Scales and sets the background image based on the current widget size.
+        Scale the loaded background image (self.bg_pixmap, assumed to be at intrinsic size)
+        to the desired target size computed from self.cell_size and self.bg_size_in_cells.
+        The target dimensions (in pixels) are:
+            target_width = cell_size * bg_size_in_cells[0]
+            target_height = cell_size * bg_size_in_cells[1]
         """
-        if self.width() > 0 and self.height() > 0:
-            image_path = self.background_image
-            if image_path.lower().endswith(".svg"):
-                svg_renderer = QtSvg.QSvgRenderer(image_path)
-                if not svg_renderer.isValid():
-                    logger.error(f"Failed to load SVG: {image_path}")
-                    self.bg_pixmap = None
-                    self.update()
-                    return
-
-                # Get the intrinsic default size from the SVG
-                default_size = svg_renderer.defaultSize()
-                w = default_size.width()
-                h = default_size.height()
-
-                # Fallback size if default size is invalid
-                if w < 1 or h < 1:
-                    w, h = 512, 512
-                    logger.warning(f"SVG '{image_path}' has invalid size. Using fallback size 512x512.")
-
-                # Calculate the best ratio
-                widget_w = self.width()
-                widget_h = self.height()
-                ratio = min(widget_w / w, widget_h / h)
-
-                # Target size to keep aspect ratio
-                target_w = max(int(w * ratio), 1)
-                target_h = max(int(h * ratio), 1)
-
-                # Create a QImage of the target size
-                temp_image = QtGui.QImage(target_w, target_h, QtGui.QImage.Format_ARGB32)
-                temp_image.fill(QtCore.Qt.transparent)
-
-                # Render the SVG at the target size
-                svg_painter = QtGui.QPainter(temp_image)
-                svg_renderer.render(svg_painter)
-                svg_painter.end()
-
-                # Convert to QPixmap
-                self.bg_pixmap = QtGui.QPixmap.fromImage(temp_image)
-                logger.info(f"SVG background image set: {image_path}")
-
-            else:
-                # Raster image
-                pixmap = QtGui.QPixmap(image_path)
-                if not pixmap.isNull():
-                    self.bg_pixmap = pixmap.scaled(
-                        self.size(),
-                        QtCore.Qt.KeepAspectRatio,
-                        QtCore.Qt.SmoothTransformation
-                    )
-                    logger.info(f"Raster background image set: {image_path}")
-                else:
-                    logger.error(f"Failed to load raster image: {image_path}")
-                    self.bg_pixmap = None
-
-            # # Reset BG offsets + scale
-            # self.bg_offset_gx = 0.0
-            # self.bg_offset_gy = 0.0
-            # self.bg_scale_factor = 1.0
-
-            self.update()
-
-            # Call `frame_all()` to ensure the image and buttons are framed properly
-            # self.frame_all()
-        else:
-            # Widget size not stable; retry scaling
-            logger.debug(f"Widget size not stable for {self.background_image}, retrying...")
-            QtCore.QTimer.singleShot(0, self.scale_and_set_image)
+        if self.bg_pixmap is None:
+            return
+        target_width = self.cell_size * self.bg_size_in_cells[0]
+        target_height = self.cell_size * self.bg_size_in_cells[1]
+        # Scale while preserving aspect ratio:
+        scaled = self.bg_pixmap.scaled(target_width, target_height,
+                                    QtCore.Qt.KeepAspectRatio,
+                                    QtCore.Qt.SmoothTransformation)
+        self._cached_scaled_bg = scaled
+        self.update()
 
     def paintEvent(self, event):
         painter = QtGui.QPainter(self)
@@ -181,32 +175,24 @@ class GridWidget(QtWidgets.QWidget):
         painter.end()
 
     def draw_background(self, painter):
-        """
-        We interpret (bg_offset_gx, bg_offset_gy) in grid coords,
-        then apply bg_scale_factor. The image center aligns with grid (0,0)
-        plus any offset we specify. It does not scale with cell_size.
-        """
         painter.save()
-
         center_x = self.width() / 2.0
         center_y = self.height() / 2.0
-        # Translate to the grid's (0,0) in pixel space
         painter.translate(center_x + self.offset_x, center_y + self.offset_y)
-
-        # Convert bg_offset_gx/gy from grid coords to px (just 1 cell => cell_size px)
         offset_px_x = self.bg_offset_gx * self.cell_size
-        offset_px_y = -(self.bg_offset_gy * self.cell_size)  # negative for y-up
+        offset_px_y = -(self.bg_offset_gy * self.cell_size)
         painter.translate(offset_px_x, offset_px_y)
-
-        # Then scale by bg_scale_factor
-        painter.scale(self.bg_scale_factor, self.bg_scale_factor)
-
-        pix_w = self.bg_pixmap.width()
-        pix_h = self.bg_pixmap.height()
-
-        # Draw with the image center at (0,0)
-        painter.drawPixmap(-pix_w / 2, -pix_h / 2, self.bg_pixmap)
-
+        # Compute target size in pixels:
+        target_width = self.cell_size * self.bg_size_in_cells[0]
+        target_height = self.cell_size * self.bg_size_in_cells[1]
+        if self.bg_pixmap:
+            # Scale the pixmap on the fly to the target size.
+            scaled = self.bg_pixmap.scaled(target_width, target_height,
+                                        QtCore.Qt.KeepAspectRatio,
+                                        QtCore.Qt.SmoothTransformation)
+            pix_w = scaled.width()
+            pix_h = scaled.height()
+            painter.drawPixmap(-pix_w/2, -pix_h/2, scaled)
         painter.restore()
 
     def draw_grid_lines(self, painter):
@@ -269,6 +255,32 @@ class GridWidget(QtWidgets.QWidget):
         self.bg_offset_gy -= 0.25
         self.update()
 
+    @property
+    def adjusted_cell_size(self):
+        if self.auto_adjust:
+            # In edit mode we let cell_size be as is.
+            if self.edit_mode:
+                return self.cell_size
+            # Otherwise, if a reference width is stored, adjust:
+            if hasattr(self, "ref_width") and self.ref_width and self.ref_width > 0:
+                scale = self.width() / self.ref_width
+                return self.cell_size * scale
+            return self.cell_size
+        else:
+            return self.cell_size
+
+    @property
+    def adjusted_bg_scale_factor(self):
+        if self.auto_adjust:
+            if self.edit_mode:
+                return self.bg_size_in_cells
+            if hasattr(self, "ref_width") and self.ref_width and self.ref_width > 0:
+                scale = self.width() / self.ref_width
+                return self.bg_size_in_cells * scale
+            return self.bg_size_in_cells
+        else:
+            return self.bg_size_in_cells
+
     def set_bg_scale(self, slider_value):
         """
         Adjust the scale factor for the background image.
@@ -283,12 +295,30 @@ class GridWidget(QtWidgets.QWidget):
         else:
             scale = default_scale + (max_scale - default_scale) * ((slider_value - 50) / 50.0)
 
-        self.bg_scale_factor = scale
+        self.bg_size_in_cells = scale
         self.update()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.reposition_all_buttons()
+
+    def adjust_to_current_size(self):
+        """
+        Adjust the stored cell_size and bg_size_in_cells based on the current widget dimensions.
+        This method computes a factor from the current width versus the saved reference width,
+        applies that factor to cell_size and bg_size_in_cells, updates the reference dimensions,
+        and then disables further automatic adjustment.
+        """
+        if hasattr(self, "ref_width") and self.ref_width and self.ref_width > 0:
+            factor = self.width() / self.ref_width
+            self.cell_size *= factor
+            self.bg_size_in_cells *= factor
+        # Update reference dimensions to current size.
+        self.ref_width = self.width()
+        self.ref_height = self.height()
+        # Lock in the values.
+        self.auto_adjust = False
+
 
     def is_position_available(self, new_grid_pos, exclude_btn=None):
         """
@@ -322,135 +352,157 @@ class GridWidget(QtWidgets.QWidget):
             child.place_in_grid()
 
     def frame_all(self):
-        # 1) Gather bounding box from all PickerButtons
+        """
+        1) Gather the bounding box from all picker buttons
+        2) Also gather bounding box from the background's current size_in_cells
+        (plus offset).
+        3) Fit that union of bounding boxes into the window by computing a new
+        cell_size. Keep bg_size_in_cells as is. Recenter self.offset_x/y.
+        """
+
+        # ----------------------------------------------------------
+        # (A) Gather bounding box from picker buttons
+        # ----------------------------------------------------------
         buttons_found = False
         min_gx = None
         max_gx = None
         min_gy = None
         max_gy = None
 
-        for child in self.findChildren(QtWidgets.QPushButton):
-            # Instead of checking grid_x, grid_y, check if child is a PickerButton
-            if isinstance(child, picker.PickerButton):
-                gx, gy = child.grid_pos              # e.g. (grid_x, grid_y)
-                w_cells, h_cells = child.size_in_cells  # e.g. (width_in_cells, height_in_cells)
+        for child in self.findChildren(picker.PickerButton):
+            gx, gy = child.grid_pos
+            w_cells, h_cells = child.size_in_cells
+            b_minx = gx
+            b_maxx = gx + w_cells - 1
+            b_miny = gy
+            b_maxy = gy + h_cells - 1
 
-                # bounding box in grid coords for this button
-                b_minx = gx
-                b_maxx = gx + (w_cells - 1)
-                b_miny = gy
-                b_maxy = gy + (h_cells - 1)
-
-                # merge
-                if min_gx is None or b_minx < min_gx:
-                    min_gx = b_minx
-                if max_gx is None or b_maxx > max_gx:
-                    max_gx = b_maxx
-                if min_gy is None or b_miny < min_gy:
-                    min_gy = b_miny
-                if max_gy is None or b_maxy > max_gy:
-                    max_gy = b_maxy
-
+            if not buttons_found:
+                min_gx, max_gx, min_gy, max_gy = b_minx, b_maxx, b_miny, b_maxy
                 buttons_found = True
+            else:
+                min_gx = min(min_gx, b_minx)
+                max_gx = max(max_gx, b_maxx)
+                min_gy = min(min_gy, b_miny)
+                max_gy = max(max_gy, b_maxy)
 
         if not buttons_found:
-            # no buttons => define a trivial bounding box so we can still handle the background
-            min_gx, max_gx, min_gy, max_gy = 0, 1, 0, 1
+            # If no buttons, define a trivial bounding box so we can still handle the background
+            min_gx, max_gx, min_gy, max_gy = 0, 0, 0, 0
 
-        # 2) Merge with background bounding box if we have a bg_pixmap
-        #    (same logic as before)
-        if self.bg_pixmap:
-            pixmap_w = self.bg_pixmap.width()
-            pixmap_h = self.bg_pixmap.height()
-            factor = self.bg_scale_factor
-            cs = self.cell_size
+        # ----------------------------------------------------------
+        # (B) Merge bounding box from the background itself
+        # The background is drawn at (bg_offset_gx,bg_offset_gy) with
+        # a size of bg_size_in_cells (width, height) in grid coords,
+        # centered on that offset.
+        # So the half-width = bg_size_in_cells[0]/2, half-height = ...
+        # We'll unify that with the existing bounding box.
+        # ----------------------------------------------------------
+        bg_w_cells = self.bg_size_in_cells[0]
+        bg_h_cells = self.bg_size_in_cells[1]
 
-            current_bg_w_pixels = pixmap_w * factor
-            current_bg_h_pixels = pixmap_h * factor
+        # The background center is at (bg_offset_gx, bg_offset_gy)
+        # so the corners are offset +/- half-size
+        bg_min_x = self.bg_offset_gx - (bg_w_cells / 2.0)
+        bg_max_x = self.bg_offset_gx + (bg_w_cells / 2.0)
+        bg_min_y = self.bg_offset_gy - (bg_h_cells / 2.0)
+        bg_max_y = self.bg_offset_gy + (bg_h_cells / 2.0)
 
-            bg_w_grid = current_bg_w_pixels / cs
-            bg_h_grid = current_bg_h_pixels / cs
+        # Merge this with the min/max from the buttons
+        if not buttons_found:
+            # If there were no buttons at all, or min_gx.. were undefined, just use bg directly
+            min_gx, max_gx = bg_min_x, bg_max_x
+            min_gy, max_gy = bg_min_y, bg_max_y
+        else:
+            min_gx = min(min_gx, bg_min_x)
+            max_gx = max(max_gx, bg_max_x)
+            min_gy = min(min_gy, bg_min_y)
+            max_gy = max(max_gy, bg_max_y)
 
-            bg_min_x = self.bg_offset_gx - (bg_w_grid / 2.0)
-            bg_max_x = self.bg_offset_gx + (bg_w_grid / 2.0)
-            bg_min_y = self.bg_offset_gy - (bg_h_grid / 2.0)
-            bg_max_y = self.bg_offset_gy + (bg_h_grid / 2.0)
+        # If the final bounding box is degenerate (0 or negative size), expand it trivially
+        if min_gx == max_gx:
+            max_gx = min_gx + 1
+        if min_gy == max_gy:
+            max_gy = min_gy + 1
 
-            if bg_min_x < min_gx:
-                min_gx = bg_min_x
-            if bg_max_x > max_gx:
-                max_gx = bg_max_x
-            if bg_min_y < min_gy:
-                min_gy = bg_min_y
-            if bg_max_y > max_gy:
-                max_gy = bg_max_y
-
-        # 3) Now compute the bounding box size and do the scaling/centering
-        grid_bbox_w = (max_gx - min_gx)
-        grid_bbox_h = (max_gy - min_gy)
-        if grid_bbox_w <= 0 or grid_bbox_h <= 0:
-            return
-
+        # ----------------------------------------------------------
+        # (C) Convert that bounding box to pixel space
+        # We'll see how big it is in grid coords
+        # (like "grid_bbox_w" = max_gx-min_gx), etc.
+        # Then we figure out a cell_size that fits inside the window.
+        # ----------------------------------------------------------
         margin_px = 20
         avail_w = self.width() - margin_px
         avail_h = self.height() - margin_px
         if avail_w <= 0 or avail_h <= 0:
             return
 
+        grid_bbox_w = (max_gx - min_gx)
+        grid_bbox_h = (max_gy - min_gy)
+
+        # Desired cell size is the ratio of "available px" / "bbox in grid coords"
         desired_cell_size_w = avail_w / grid_bbox_w
         desired_cell_size_h = avail_h / grid_bbox_h
         new_cell_size = min(desired_cell_size_w, desired_cell_size_h)
+
+        # Clip cell size to your min/max
         new_cell_size = max(self.MIN_CELL_SIZE, min(new_cell_size, self.MAX_CELL_SIZE))
 
+        # We'll scale from the old cell_size -> new cell_size
+        # But we do *not* update bg_size_in_cells => we preserve user-chosen dimension
         old_cell_size = self.cell_size
-        if old_cell_size > 0:
-            ratio = new_cell_size / old_cell_size
-            self.bg_scale_factor *= ratio
         self.cell_size = new_cell_size
 
+        # ----------------------------------------------------------
+        # (D) Re-center offset so that the bounding box is in view
+        # We'll pick the midpoint of the bounding box and shift it to the widget center.
+        # ----------------------------------------------------------
         mid_gx = (min_gx + max_gx) / 2.0
         mid_gy = (min_gy + max_gy) / 2.0
 
+        # Convert that grid center to pixel coords with the new cell_size
         px_mid, py_mid = self.grid_to_pixel(mid_gx, mid_gy)
         desired_cx = self.width() / 2.0
         desired_cy = self.height() / 2.0
         shift_x = desired_cx - px_mid
         shift_y = desired_cy - py_mid
 
+        # Adjust offsets
         self.offset_x += shift_x
         self.offset_y += shift_y
 
+        # ----------------------------------------------------------
+        # (E) Reposition buttons so they reflect the new cell_size
+        # (and your new offsets)
+        # ----------------------------------------------------------
         self.reposition_all_buttons()
         self.update()
 
     def apply_zoom(self, increment):
         """
         Zoom the grid by 'increment' in cell_size.
-        If in animate mode, also scale the background by the same ratio.
+        We do NOT change bg_size_in_cells anymore. This keeps
+        the background and buttons in sync in animate mode.
         """
-        old_cell_size = self.cell_size
-
         new_cell_size = self.cell_size + increment
         if new_cell_size < self.MIN_CELL_SIZE:
             new_cell_size = self.MIN_CELL_SIZE
         elif new_cell_size > self.MAX_CELL_SIZE:
             new_cell_size = self.MAX_CELL_SIZE
 
-        # If we are in animate mode, scale the background ratio
-        if not self.edit_mode and old_cell_size > 0:
-            ratio = new_cell_size / float(old_cell_size)
-            self.bg_scale_factor *= ratio
-
         self.cell_size = new_cell_size
+
+        # Move/resize any buttons in this grid
         self.reposition_all_buttons()
+
         self.update()
+
 
     def grid_to_pixel(self, grid_x, grid_y):
         """Convert grid coordinates to pixel coordinates, accounting for panning and Y-axis inversion."""
-        # Apply panning offset
-        pixel_x = (grid_x * self.cell_size) + (self.width() / 2) + self.offset_x
-        # Invert Y-axis: positive Y upwards
-        pixel_y = (self.height() / 2) - (grid_y * self.cell_size) + self.offset_y
+        cs = self.adjusted_cell_size
+        pixel_x = (grid_x * cs) + (self.width() / 2) + self.offset_x
+        pixel_y = (self.height() / 2) - (grid_y * cs) + self.offset_y
         return (pixel_x, pixel_y)
 
     def pixel_to_grid(self, pixel_x, pixel_y):

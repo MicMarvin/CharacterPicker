@@ -301,7 +301,7 @@ class TabManager(QtWidgets.QTabWidget):
         elif event_type == "deselect":
             self.parent().update_picker_button_fields(None)
 
-    def add_page_to_current(self, page_name, background_image="", bg_scale_factor=1.0, bg_offset=(0.0, 0.0)):
+    def add_page_to_current(self, page_name, background_image="", bg_size_in_cells=[11, 20], bg_offset=(0.0, 0.0)):
         """
         Add a new sub-page (GridWidget) to the current character tab with optional background settings.
         """
@@ -322,7 +322,7 @@ class TabManager(QtWidgets.QTabWidget):
         # Set background image, scale, and offset if provided
         if background_image:
             QtCore.QTimer.singleShot(0, lambda:new_page.set_background_image(background_image))
-        new_page.bg_scale_factor = bg_scale_factor
+        new_page.bg_size_in_cells = bg_size_in_cells
         new_page.bg_offset_gx, new_page.bg_offset_gy = bg_offset
 
         # Add the page to the stacked_widget
@@ -413,13 +413,14 @@ class TabManager(QtWidgets.QTabWidget):
             page_widget = stacked_widget.widget(page_index)
             page_name = getattr(page_widget, "page_name", f"Page {page_index + 1}")
             background_image = getattr(page_widget, "background_image", "")
-            bg_scale_factor = getattr(page_widget, "bg_scale_factor", 1.0)
+            bg_size_in_cells = getattr(page_widget, "bg_size_in_cells", [11, 20])
             bg_offset_gx = getattr(page_widget, "bg_offset_gx", 0.0)
             bg_offset_gy = getattr(page_widget, "bg_offset_gy", 0.0)
 
-            # **Include the current grid cell size (zoom level)**
             cell_size = getattr(page_widget, "cell_size", 40)
-            logger.info(f"Cell size for page '{page_name}': {cell_size}")   
+            # Save the current widget dimensions as a reference.
+            ref_width = page_widget.width()
+            ref_height = page_widget.height()
 
             buttons_data = []
             for btn in page_widget.findChildren(picker.PickerButton):
@@ -436,15 +437,18 @@ class TabManager(QtWidgets.QTabWidget):
                 }
                 buttons_data.append(btn_data)
 
-            pages_dict[page_name] = {
+            page_entry = {
                 "page_name": page_name,
                 "background_image": background_image,
-                "bg_scale_factor": bg_scale_factor,
+                "bg_size_in_cells": bg_size_in_cells,
                 "bg_offset_gx": bg_offset_gx,
                 "bg_offset_gy": bg_offset_gy,
                 "cell_size": cell_size,
+                "ref_width": ref_width,          
+                "ref_height": ref_height,       
                 "buttons": buttons_data
             }
+            pages_dict[page_name] = page_entry
 
         character_data = {
             "character_name": character_name,
@@ -475,35 +479,32 @@ class TabManager(QtWidgets.QTabWidget):
         new_tab = self.widget(new_tab_index)
         new_tab.character_pic_path = character_pic_filename
 
-        # Update the tab icon to use the saved profile picture.
         try:
             new_tab.set_tab_icon(character_pic_filename)
         except Exception as e:
-            logger.error(f"Error setting tab icon: {e}")  
+            logger.error(f"Error setting tab icon: {e}")
 
-        # **** Remove all existing pages and clear navigation buttons ****
+        # Remove all existing pages and clear navigation buttons.
         while new_tab.stacked_widget.count() > 0:
             widget = new_tab.stacked_widget.widget(0)
             new_tab.stacked_widget.removeWidget(widget)
             widget.deleteLater()
-        
-        # Also clear the navigation buttons from the page button frame:
         layout = new_tab.page_button_frame.dynamic_buttons_layout
         while layout.count():
             item = layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
-
-        # Clear the page_buttons dictionary
         new_tab.page_buttons = {}
 
-        # Iterate over saved pages
+        # Iterate over saved pages.
         for page_info in character_dict.get("pages", []):
             page_name = page_info.get("page_name", "Unnamed Page")
             background_image = page_info.get("background_image", "")
-            bg_scale_factor = page_info.get("bg_scale_factor", 1.0)
+            bg_size_in_cells = page_info.get("bg_size_in_cells", [11, 20])
             bg_offset = (page_info.get("bg_offset_gx", 0), page_info.get("bg_offset_gy", 0))
-            saved_cell_size = page_info.get("cell_size", 40)  # Retrieve saved cell size
+            saved_cell_size = page_info.get("cell_size", 40)
+            saved_ref_width = page_info.get("ref_width", None)
+            saved_ref_height = page_info.get("ref_height", None)
 
             # Create a new page using GridWidget.
             new_page = grid.GridWidget(
@@ -514,19 +515,27 @@ class TabManager(QtWidgets.QTabWidget):
             )
             new_page.page_name = page_name
             new_page.background_image = background_image
-            new_page.bg_scale_factor = bg_scale_factor
+            new_page.bg_size_in_cells = bg_size_in_cells
             new_page.bg_offset_gx, new_page.bg_offset_gy = bg_offset
-
-            # Restore the saved grid cell size (zoom level)
             new_page.cell_size = saved_cell_size
 
-            # Use a timer to set the background image so that the correct value is captured.
-            if background_image:
-                QtCore.QTimer.singleShot(
-                    0, lambda bg=background_image, page=new_page: page.set_background_image(bg)
-                )
+            # Restore reference dimensions (if saved).
+            if saved_ref_width is not None:
+                new_page.ref_width = saved_ref_width
+            else:
+                new_page.ref_width = new_page.width()
+            if saved_ref_height is not None:
+                new_page.ref_height = saved_ref_height
+            else:
+                new_page.ref_height = new_page.height()
 
-            # Add the new page to the stacked widget.
+            # Disable automatic scaling adjustments.
+            new_page.auto_adjust = False
+
+            # Load the background image without auto-scaling.
+            if background_image:
+                new_page.set_background_image(background_image, apply_scaling=False)
+
             new_tab.stacked_widget.addWidget(new_page)
 
             # Create a navigation button for this page.
@@ -540,22 +549,37 @@ class TabManager(QtWidgets.QTabWidget):
             new_tab.page_button_frame.add_dynamic_button(page_button)
             new_tab.page_buttons[page_button] = new_page
 
+            logger.info(f"Page '{page_name}' added successfully.")
+
             # Recreate picker buttons on this page.
             for btn_info in page_info.get("buttons", []):
                 picker.create_picker_button(new_page, btn_info)
 
-        # Set the current page to the first one.
+        # After loading pages and creating navigation buttons…
         if new_tab.stacked_widget.count() > 0:
             new_tab.stacked_widget.setCurrentIndex(0)
 
         self.update_page_button_styles()
 
+        # For each page, force its size to match the tab and update its layout.
         current_tab = self.currentWidget()
         for i in range(current_tab.stacked_widget.count()):
             page = current_tab.stacked_widget.widget(i)
-            # Force the page to match the current tab’s size (or another appropriate size)
+            # Force the page to match the current tab’s size.
             page.resize(current_tab.size())
             page.reposition_all_buttons()
             page.update()
 
-        logger.info(f"Character '{character_name}' loaded successfully.")  
+        # Now explicitly call "frame all" on the current grid so that both grid and background are adjusted to fill the window.
+        current_grid = self.get_current_grid_widget()
+        if current_grid:
+            current_grid.frame_all()
+
+        # Finally, automatically switch to animate mode.
+        if self.character_picker.edit_mode:
+            self.character_picker.toggle_edit_mode()  # Switch to animate mode.
+
+        QtWidgets.QApplication.processEvents()
+
+        logger.info(f"Character '{character_name}' loaded successfully.")
+

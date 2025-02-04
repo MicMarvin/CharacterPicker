@@ -16,7 +16,7 @@ def save_character_data(file_path, character_name, character_pic_filename, pages
         page_entry = {
             "page_name": page_data["page_name"],
             "background_image": page_data["background_image"],
-            "bg_scale_factor": page_data["bg_scale_factor"],
+            "bg_size_in_cells": page_data["bg_size_in_cells"],
             "bg_offset_gx": page_data["bg_offset_gx"],
             "bg_offset_gy": page_data["bg_offset_gy"],
             "cell_size": page_data.get("cell_size", 40),  # Save the current grid cell size (default to 40 if missing)

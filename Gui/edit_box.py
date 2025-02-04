@@ -1,5 +1,5 @@
 # edit_box.py
-from PySide2 import QtWidgets, QtCore, QtGui
+from PySide2 import QtWidgets, QtCore, QtGui, QtSvg
 import CharacterPicker.Gui.custom_widgets as custom
 import os
 import importlib
@@ -206,8 +206,8 @@ class EditBox(QtWidgets.QGroupBox):
 
         # Scale Factor Slider
         self.bg_scale_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.bg_scale_slider.setRange(0, 100)
-        self.bg_scale_slider.setValue(50)  # Default = 50 => 1.0 scale
+        self.bg_scale_slider.setRange(5, 100)
+        self.bg_scale_slider.setValue( self.get_current_bg_scale() )
         self.bg_scale_slider.valueChanged.connect(self.on_bg_scale_changed)
         left_layout.addRow("Scale Factor:", self.bg_scale_slider)
 
@@ -294,6 +294,8 @@ class EditBox(QtWidgets.QGroupBox):
                         break
 
     def update_page_fields(self):
+        logger.info(f"RUNNING update_page_fields()")
+
         """Update the Page Settings fields with the current page's data."""
         current_tab = self.tab_manager.currentWidget()
 
@@ -314,6 +316,13 @@ class EditBox(QtWidgets.QGroupBox):
         # Debugging: Log all attributes and their values
         logger.debug(f"update_page_fields() - Current page attributes and values: {vars(current_page)}")
 
+
+
+        # --- Update Page Name ---
+        current_index = self.tab_manager.currentIndex()  # Use TabManager's currentIndex
+        current_tab_name = self.tab_manager.tabText(current_index)
+        self.set_character_name_field(current_tab_name)
+
         # --- Update Background Image ---
         if hasattr(current_page, "background_image"):
             bg_image = current_page.background_image
@@ -330,22 +339,52 @@ class EditBox(QtWidgets.QGroupBox):
             logger.warning("update_page_fields() - 'background_image' attribute is missing from the current page.")
 
         # --- Update Scale Factor ---
-        if hasattr(current_page, "bg_scale_factor"):
-            scale_factor = current_page.bg_scale_factor
-            logger.debug(f"update_page_fields() - Raw bg_scale_factor value: {scale_factor}")
-
-            self.bg_scale_slider.setValue(int(scale_factor * 50))
+        if hasattr(current_page, "bg_size_in_cells"):
+            scale_factor = current_page.bg_size_in_cells
+            logger.debug(f"update_page_fields() - Raw bg_size_in_cells value: {scale_factor}")
+            self.bg_scale_slider.blockSignals(True)
+            self.bg_scale_slider.setValue(int(current_page.bg_size_in_cells[0]))
+            self.bg_scale_slider.blockSignals(False)
             logger.info(f"update_page_fields() - Scale factor updated: {scale_factor}")
         else:
-            logger.warning("update_page_fields() - 'bg_scale_factor' attribute is missing from the current page.")
+            logger.warning("update_page_fields() - 'bg_size_in_cells' attribute is missing from the current page.")
 
     def on_bg_scale_changed(self, value):
-        """Update the background scale factor based on the slider value."""
-        current_tab = self.tab_manager.currentWidget()
-        if current_tab:
-            current_page = current_tab.stacked_widget.currentWidget()
-            if hasattr(current_page, "set_bg_scale"):
-                current_page.set_bg_scale(value)
+        """
+        Update the background's size (in grid cells) for the current page.
+        The slider value sets the background width in cells.
+        Then, based on the image’s intrinsic aspect ratio and the current cell size,
+        compute the appropriate height in cells.
+        """
+        current_page = self.tab_manager.get_current_grid_widget()
+        if not current_page:
+            return
+        # Update the width in cells.
+        current_page.bg_size_in_cells[0] = value
+        # Now, adjust the height to maintain the image's intrinsic aspect ratio.
+        if current_page.bg_pixmap and current_page.background_image:
+            # Determine intrinsic size.
+            if current_page.background_image.lower().endswith(".svg"):
+                svg_renderer = QtSvg.QSvgRenderer(current_page.background_image)
+                intrinsic_size = svg_renderer.defaultSize()
+                img_width, img_height = intrinsic_size.width(), intrinsic_size.height()
+            else:
+                img_width = current_page.bg_pixmap.width()
+                img_height = current_page.bg_pixmap.height()
+            if img_height > 0:
+                aspect = img_width / img_height
+                # The new width in pixels is cell_size * slider value.
+                new_width_pixels = current_page.cell_size * value
+                new_height_pixels = new_width_pixels / aspect
+                current_page.bg_size_in_cells[1] = int(round(new_height_pixels / current_page.cell_size))
+        # Trigger a repaint.
+        current_page.update()
+
+    def get_current_bg_scale(self):
+        current_page = self.tab_manager.get_current_grid_widget()
+        if current_page and hasattr(current_page, "bg_size_in_cells"):
+            return current_page.bg_size_in_cells[0]
+        return 10  # default
 
     def set_background_image(self, image_path=None):
         """
@@ -449,13 +488,15 @@ class EditBox(QtWidgets.QGroupBox):
         right_form_layout = QtWidgets.QFormLayout()
 
         grid_pos_layout = QtWidgets.QHBoxLayout()
-        self.picker_grid_x = QtWidgets.QSpinBox()
+        self.picker_grid_x = QtWidgets.QDoubleSpinBox()
         self.picker_grid_x.setRange(-9999, 9999)
+        self.picker_grid_x.setSingleStep(0.5)
         grid_pos_layout.addWidget(QtWidgets.QLabel("x:"))
         grid_pos_layout.addWidget(self.picker_grid_x)
 
-        self.picker_grid_y = QtWidgets.QSpinBox()
+        self.picker_grid_y = QtWidgets.QDoubleSpinBox()
         self.picker_grid_y.setRange(-9999, 9999)
+        self.picker_grid_y.setSingleStep(0.5)
         grid_pos_layout.addWidget(QtWidgets.QLabel("y:"))
         grid_pos_layout.addWidget(self.picker_grid_y)
         right_form_layout.addRow("Grid:", grid_pos_layout)
@@ -552,7 +593,7 @@ class EditBox(QtWidgets.QGroupBox):
 
         return {
             "label": " ",
-            "grid_pos": (0, 0),
+            "grid_pos": (0.0, 0.0),
             "size_in_cells": (1, 1),
             "shape": "rectangle",
             "color": QtGui.QColor("#f9aa26"),
@@ -584,8 +625,8 @@ class EditBox(QtWidgets.QGroupBox):
         data_dict["label"] = label
 
         # Grid Position (from spinboxes)
-        gx = int(self.picker_grid_x.value())
-        gy = int(self.picker_grid_y.value())
+        gx = self.picker_grid_x.value()
+        gy = self.picker_grid_y.value()
         data_dict["grid_pos"] = (gx, gy)
 
         # Size
@@ -623,14 +664,16 @@ class EditBox(QtWidgets.QGroupBox):
         # -----------------------------------------
         # OVERRIDE GRID POSITION IF PROVIDED EXTERNALLY
         # -----------------------------------------
-        # --- Now do a robust check before overriding ---
-        if isinstance(external_grid_pos, tuple):
-            # external_grid_pos is a valid (gx, gy) coordinate
+        if external_grid_pos is None:
+            # Normal usage: no override
+            pass
+        elif isinstance(external_grid_pos, tuple):
+            # Right-click usage: override the spinbox
             data_dict["grid_pos"] = external_grid_pos
         else:
-            if external_grid_pos is not None:
-                # Print a warning if external_grid_pos is something other than None or tuple
-                logger.warning(f"[WARNING] external_grid_pos is not a tuple (type: {type(external_grid_pos)}) => ignoring override")
+            # Some unexpected type => warn
+            #logger.warning(f"[WARNING] external_grid_pos is not a tuple (type: {type(external_grid_pos)}) => ignoring override")
+            pass
 
         # Submit
         self.main_window.submit_picker(data_dict)

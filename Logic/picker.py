@@ -269,7 +269,9 @@ class PickerButton(QtWidgets.QPushButton):
                 new_grid_y = self._initial_grid_pos[1] + delta_y
 
                 # Snap to nearest grid position
-                new_grid_x, new_grid_y = round(new_grid_x), round(new_grid_y)
+                snap_increment = 0.5
+                new_grid_x = round(new_grid_x / snap_increment) * snap_increment
+                new_grid_y = round(new_grid_y / snap_increment) * snap_increment
 
                 # Update grid_pos
                 self.grid_pos = (new_grid_x, new_grid_y)

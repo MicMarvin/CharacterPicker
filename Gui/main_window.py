@@ -474,11 +474,11 @@ class CharacterPicker(QtWidgets.QMainWindow):
             return
 
         stacked_widget = current_tab.stacked_widget
-        if stacked_widget.count() <= 1:
-            # If there's only 1 page, decide if you want to allow removing it
-            # or keep at least one page in the tab.
-            #QtWidgets.QMessageBox.warning(self, "Warning", "Cannot remove the only page in this tab.")
-            return
+        # if stacked_widget.count() <= 1:
+        #     # If there's only 1 page, decide if you want to allow removing it
+        #     # or keep at least one page in the tab.
+        #     #QtWidgets.QMessageBox.warning(self, "Warning", "Cannot remove the only page in this tab.")
+        #     return
 
         # Find the current page in the stacked widget
         current_page = stacked_widget.currentWidget()
@@ -751,13 +751,15 @@ class CharacterPicker(QtWidgets.QMainWindow):
         Deselect the current picker button,
         then set the EditBox fields to match the new tab/page.
         """
+        logger.info(f"ON_TAB_CHANGED() fired with index={index}")
+
         # 1) Deselect any picker button
         self.clear_multi_select()
 
-        # 2) Pull the character name from the tab and show it in edit_box.character_name_input
+        # # 2) Pull the character name from the tab and show it in edit_box.character_name_input
         tab_name = self.tab_manager.tabText(index)  # e.g. "Character 1"
         self.edit_box.set_character_name_field(tab_name)
-
+        
         # 3) Pull the current page name, if any
         current_tab = self.tab_manager.widget(index)
         if current_tab and hasattr(current_tab, "stacked_widget"):
@@ -784,12 +786,16 @@ class CharacterPicker(QtWidgets.QMainWindow):
             self.edit_box.character_pic_filename.setText("None")
             self.edit_box.character_pic_button.setEnabled(False)
 
+        self.edit_box.update_page_fields()
+
         self._reconnect_grid_signals()
 
     def on_page_changed(self, index):
         """
         Called whenever the current QStackedWidget in TabManager changes pages.
         """
+        logger.info(f"ON_PAGE_CHANGED() fired with index={index}")
+
         current_tab = self.tab_manager.currentWidget()
         if not current_tab or not hasattr(current_tab, 'stacked_widget'):
             self.edit_box.set_page_name_field("")
