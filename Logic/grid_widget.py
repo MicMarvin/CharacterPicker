@@ -69,6 +69,11 @@ class GridWidget(QtWidgets.QWidget):
 
         self.framed = False   # Will be set to True when the page has been explicitly framed.
 
+        # Initialize rubber band for marquee selection
+        self.rubberBand = QtWidgets.QRubberBand(QtWidgets.QRubberBand.Rectangle, self)
+        self.rubberBand.hide()
+        self.rubberBandOrigin = QtCore.QPoint()
+
     @property
     def edit_mode(self):
         """
@@ -531,24 +536,29 @@ class GridWidget(QtWidgets.QWidget):
     #  Mouse Events
     # ------------------------
     def mousePressEvent(self, event):
-        if event.button() == QtCore.Qt.MiddleButton:
+        if event.button() == QtCore.Qt.LeftButton:
+            child = self.childAt(event.pos())
+            # If click is NOT on a picker button, start marquee selection.
+            if not child or not isinstance(child, picker.PickerButton):
+                self.rubberBandOrigin = event.pos()
+                self.rubberBand.setGeometry(QtCore.QRect(self.rubberBandOrigin, QtCore.QSize()))
+                self.rubberBand.show()
+                # Clear any previous multi-selection (assume the top-level window has this method)
+                top_level = self.window()
+                if hasattr(top_level, "clear_multi_select"):
+                    top_level.clear_multi_select()
+                event.accept()
+                return  # Do not process further for this event.
+            else:
+                # If a picker button is clicked, continue with normal processing.
+                super().mousePressEvent(event)
+        elif event.button() == QtCore.Qt.MiddleButton:
             self._dragging = True
             self._drag_start = event.pos()
             event.accept()
-
-        elif event.button() == QtCore.Qt.LeftButton:
-            # Check if user clicked on a child (e.g. a PickerButton)
-            child = self.childAt(event.pos())
-            # If child is None or not a PickerButton, deselect
-            if not child or not isinstance(child, picker.PickerButton):
-                # Clear selection for all buttons
-                top_level = self.window()
-                if hasattr(top_level, "clear_multi_select"):
-                    top_level.clear_multi_select()  
         elif event.button() == QtCore.Qt.RightButton:
             child = self.childAt(event.pos())
             selected_button = child if isinstance(child, picker.PickerButton) else None
-
             if selected_button:
                 self.context_menu.selected_button = selected_button
                 self.context_menu.set_context_type('button')
@@ -556,35 +566,52 @@ class GridWidget(QtWidgets.QWidget):
             else:
                 self.context_menu.selected_button = None
                 self.context_menu.set_context_type('grid')
-
-                # Get the grid coordinates of the right-clicked spot
                 gx, gy = self.pixel_to_grid(event.pos().x(), event.pos().y())
-                # Store that grid position in the context menu
                 self.context_menu.grid_pos = (round(gx), round(gy))
-
             self.context_menu.exec_(event.globalPos())
         else:
             super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
+        if self.rubberBand.isVisible():
+            rect = QtCore.QRect(self.rubberBandOrigin, event.pos()).normalized()
+            self.rubberBand.setGeometry(rect)
+            event.accept()
+            return
         if self._dragging:
             delta = event.pos() - self._drag_start
             self._drag_start = event.pos()
-
             self.offset_x += delta.x()
             self.offset_y += delta.y()
-
             self.reposition_all_buttons()
             self.update()
-
-            # Emit grid_panned signal
             self.grid_panned.emit()
-
             event.accept()
         else:
             super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
+        if event.button() == QtCore.Qt.LeftButton and self.rubberBand.isVisible():
+            selection_rect = self.rubberBand.geometry()
+            self.rubberBand.hide()
+            # Iterate over all picker buttons in this grid.
+            for btn in self.findChildren(picker.PickerButton):
+                # btn.geometry() is already in the coordinate system of the grid widget.
+                if selection_rect.intersects(btn.geometry()):
+                    # In animate mode, only select if command_mode is "Select"
+                    if not self.edit_mode and btn.command_mode != "Select":
+                        continue
+                    # Add the button to the multi-selection.
+                    top_level = self.window()
+                    if hasattr(top_level, "add_button_to_multi_select"):
+                        top_level.add_button_to_multi_select(btn, shift_pressed=True)
+                    # We iterate over all selected picker buttons and call their execute_command() method
+                    if not self.edit_mode:
+                        top_level = self.window()
+                        for btn in top_level.selected_picker_buttons:
+                            btn.execute_command()
+            event.accept()
+            return
         if event.button() == QtCore.Qt.MiddleButton:
             self._dragging = False
             event.accept()
