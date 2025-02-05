@@ -838,18 +838,3 @@ class CharacterPicker(QtWidgets.QMainWindow):
 
         # 4) Update our reference
         self._connected_grid = new_grid
-
-
-    def show_about_dialog(self):
-        """Show the About dialog."""
-        QtWidgets.QMessageBox.information(self, "About", "Character Picker Tool\nVersion 1.0")
-
-    def save_character(self):
-        """Placeholder method for saving a character."""
-        # Implement saving logic here
-        QtWidgets.QMessageBox.information(self, "Save Character", "Character saved successfully.")
-
-    def load_character(self):
-        """Placeholder method for loading a character."""
-        # Implement loading logic here
-        QtWidgets.QMessageBox.information(self, "Load Character", "Character loaded successfully.")

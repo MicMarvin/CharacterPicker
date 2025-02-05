@@ -46,9 +46,9 @@ class MenuBar(QtWidgets.QMenuBar):
         self.save_character_action.setShortcut(QtGui.QKeySequence("Ctrl+S"))
         file_menu.addAction(self.save_character_action)
 
-        self.save_as_action = QtWidgets.QAction("Save As...", file_menu)
-        self.save_as_action.setShortcut(QtGui.QKeySequence("Ctrl+Shift+S"))
-        file_menu.addAction(self.save_as_action)
+        # self.save_as_action = QtWidgets.QAction("Save As...", file_menu)
+        # self.save_as_action.setShortcut(QtGui.QKeySequence("Ctrl+Shift+S"))
+        # file_menu.addAction(self.save_as_action)
 
         file_menu.addSeparator()
 
@@ -122,6 +122,19 @@ class MenuBar(QtWidgets.QMenuBar):
         help_menu.addAction(about_action)
         about_action.triggered.connect(self.show_about_dialog)
 
+    # def show_about_dialog(self):
+    #     message_box = QtWidgets.QMessageBox(self)
+    #     message_box.setWindowTitle("About")
+    #     message_box.setText("Character Picker Tool\nVersion 1.0\n\nCreated by: Mic Marvin")
+    #     message_box.setInformativeText(
+    #         '<a href="https://micmarvin.com">www.micmarvin.com</a>'
+    #     )
+    #     message_box.setTextFormat(QtCore.Qt.RichText)  # Enable rich text
+    #     message_box.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)  # Enable link interaction
+    #     message_box.setStandardButtons(QtWidgets.QMessageBox.Ok)
+    #     message_box.exec_()
+
     def show_about_dialog(self):
-        QtWidgets.QMessageBox.information(self, "About", "Character Picker Tool\nVersion 1.0")
+        QtWidgets.QMessageBox.about(self, "About", 'Character Picker Tool<br>Version 1.0<br><br>Created by: Mic Marvin<br><a href="https://www.micmarvin.com/">www.micmarvin.com</a>')
+
 

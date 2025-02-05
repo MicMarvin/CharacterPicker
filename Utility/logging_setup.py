@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 def setup_logging():
-    log_level = logging.DEBUG  # Most verbose to least: DEBUG, INFO, WARNING, ERROR, CRITICAL
+    log_level = logging.ERROR  # Most verbose to least: DEBUG, INFO, WARNING, ERROR, CRITICAL
 
     # Get the root logger
     root_logger = logging.getLogger()
